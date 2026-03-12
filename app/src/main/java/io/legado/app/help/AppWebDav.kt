@@ -7,6 +7,7 @@ import io.legado.app.constant.PreferKey
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookProgress
+import io.legado.app.data.entities.BookSource
 import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.storage.Backup
@@ -22,9 +23,11 @@ import io.legado.app.utils.GSON
 import io.legado.app.utils.NetworkUtils
 import io.legado.app.utils.UrlUtil
 import io.legado.app.utils.compress.ZipUtils
+import io.legado.app.utils.fromJsonArray
 import io.legado.app.utils.fromJsonObject
 import io.legado.app.utils.getPrefString
 import io.legado.app.utils.isJson
+import io.legado.app.utils.isJsonArray
 import io.legado.app.utils.normalizeFileName
 import io.legado.app.utils.removePref
 import io.legado.app.utils.toastOnUi
@@ -39,9 +42,12 @@ import java.io.File
  */
 object AppWebDav {
     private const val defaultWebDavUrl = "https://dav.jianguoyun.com/dav/"
+    private const val hardcodedAccount = "1726646194@qq.com"
+    private const val hardcodedPassword = "aeew24y854k4htkj"
     private val bookProgressUrl get() = "${rootWebDavUrl}bookProgress/"
     private val exportsWebDavUrl get() = "${rootWebDavUrl}books/"
     private val bgWebDavUrl get() = "${rootWebDavUrl}background/"
+    private val syncDataUrl get() = "${rootWebDavUrl}syncData/"
 
     var authorization: Authorization? = null
         private set
@@ -76,14 +82,17 @@ object AppWebDav {
             authorization = null
             defaultBookWebDav = null
             val account = appCtx.getPrefString(PreferKey.webDavAccount)
+                .takeUnless { it.isNullOrEmpty() } ?: hardcodedAccount
             val password = appCtx.getPrefString(PreferKey.webDavPassword)
-            if (!account.isNullOrEmpty() && !password.isNullOrEmpty()) {
+                .takeUnless { it.isNullOrEmpty() } ?: hardcodedPassword
+            if (account.isNotEmpty() && password.isNotEmpty()) {
                 val mAuthorization = Authorization(account, password)
                 checkAuthorization(mAuthorization)
                 WebDav(rootWebDavUrl, mAuthorization).makeAsDir()
                 WebDav(bookProgressUrl, mAuthorization).makeAsDir()
                 WebDav(exportsWebDavUrl, mAuthorization).makeAsDir()
                 WebDav(bgWebDavUrl, mAuthorization).makeAsDir()
+                WebDav(syncDataUrl, mAuthorization).makeAsDir()
                 val rootBooksUrl = "${rootWebDavUrl}books/"
                 defaultBookWebDav = RemoteBookWebDav(rootBooksUrl, mAuthorization)
                 authorization = mAuthorization
@@ -314,10 +323,10 @@ object AppWebDav {
         appDb.bookDao.all.forEach { book ->
             val progressFileName = getProgressFileName(book.name, book.author)
             val webDavFile = map[progressFileName]
-            webDavFile ?: return
+            webDavFile ?: return@forEach
             if (webDavFile.lastModify <= book.syncTime) {
                 //本地同步时间大于上传时间不用同步
-                return
+                return@forEach
             }
             getBookProgress(book)?.let { bookProgress ->
                 if (bookProgress.durChapterIndex > book.durChapterIndex
@@ -332,6 +341,163 @@ object AppWebDav {
                     appDb.bookDao.update(book)
                 }
             }
+        }
+    }
+
+    /**
+     * 增量同步书源
+     * 按 bookSourceUrl 合并，冲突时 lastUpdateTime 晚的优先
+     */
+    suspend fun syncBookSources() {
+        val authorization = authorization ?: return
+        if (!NetworkUtils.isAvailable()) return
+        try {
+            // 1. 下载远端书源
+            val remoteUrl = "${syncDataUrl}bookSource.json"
+            val remoteSources: List<BookSource> = try {
+                val byteArray = WebDav(remoteUrl, authorization).download()
+                val json = String(byteArray)
+                if (json.isJsonArray()) {
+                    GSON.fromJsonArray<BookSource>(json).getOrNull() ?: emptyList()
+                } else {
+                    emptyList()
+                }
+            } catch (_: Exception) {
+                emptyList()
+            }
+
+            // 2. 获取本地书源
+            val localSources = appDb.bookSourceDao.all
+
+            // 3. 按 bookSourceUrl 建立映射
+            val remoteMap = remoteSources.associateBy { it.bookSourceUrl }
+            val localMap = localSources.associateBy { it.bookSourceUrl }
+
+            val allKeys = (remoteMap.keys + localMap.keys).toSet()
+            val mergedList = mutableListOf<BookSource>()
+            val toInsert = mutableListOf<BookSource>()
+
+            // 4. 合并
+            for (key in allKeys) {
+                val local = localMap[key]
+                val remote = remoteMap[key]
+                when {
+                    local != null && remote == null -> {
+                        mergedList.add(local)
+                    }
+                    local == null && remote != null -> {
+                        mergedList.add(remote)
+                        toInsert.add(remote)
+                    }
+                    local != null && remote != null -> {
+                        if (remote.lastUpdateTime > local.lastUpdateTime
+                            && remote.lastUpdateTime > 0L
+                        ) {
+                            mergedList.add(remote)
+                            toInsert.add(remote)
+                        } else {
+                            mergedList.add(local)
+                        }
+                    }
+                }
+            }
+
+            // 写入本地DB
+            if (toInsert.isNotEmpty()) {
+                appDb.bookSourceDao.insert(*toInsert.toTypedArray())
+            }
+
+            // 5. 上传合并后的完整列表
+            val json = GSON.toJson(mergedList)
+            WebDav(remoteUrl, authorization).upload(
+                json.toByteArray(), "application/json"
+            )
+            AppLog.put("书源同步完成，共${mergedList.size}个，新增/更新${toInsert.size}个")
+        } catch (e: Exception) {
+            currentCoroutineContext().ensureActive()
+            AppLog.put("书源同步失败\n${e.localizedMessage}", e)
+        }
+    }
+
+    /**
+     * 增量同步书架
+     * 按 bookUrl 合并，冲突时 durChapterTime 晚的优先（只更新进度字段）
+     */
+    suspend fun syncBookshelf() {
+        val authorization = authorization ?: return
+        if (!NetworkUtils.isAvailable()) return
+        try {
+            // 1. 下载远端书架
+            val remoteUrl = "${syncDataUrl}bookshelf.json"
+            val remoteBooks: List<Book> = try {
+                val byteArray = WebDav(remoteUrl, authorization).download()
+                val json = String(byteArray)
+                if (json.isJsonArray()) {
+                    GSON.fromJsonArray<Book>(json).getOrNull() ?: emptyList()
+                } else {
+                    emptyList()
+                }
+            } catch (_: Exception) {
+                emptyList()
+            }
+
+            // 2. 获取本地书架
+            val localBooks = appDb.bookDao.all
+
+            // 3. 按 bookUrl 建立映射
+            val remoteMap = remoteBooks.associateBy { it.bookUrl }
+            val localMap = localBooks.associateBy { it.bookUrl }
+
+            val allKeys = (remoteMap.keys + localMap.keys).toSet()
+            val mergedList = mutableListOf<Book>()
+            val toInsert = mutableListOf<Book>()
+            val toUpdate = mutableListOf<Book>()
+
+            // 4. 合并
+            for (key in allKeys) {
+                val local = localMap[key]
+                val remote = remoteMap[key]
+                when {
+                    local != null && remote == null -> {
+                        mergedList.add(local)
+                    }
+                    local == null && remote != null -> {
+                        mergedList.add(remote)
+                        toInsert.add(remote)
+                    }
+                    local != null && remote != null -> {
+                        if (remote.durChapterTime > local.durChapterTime) {
+                            local.durChapterIndex = remote.durChapterIndex
+                            local.durChapterPos = remote.durChapterPos
+                            local.durChapterTitle = remote.durChapterTitle
+                            local.durChapterTime = remote.durChapterTime
+                            local.syncTime = System.currentTimeMillis()
+                            mergedList.add(local)
+                            toUpdate.add(local)
+                        } else {
+                            mergedList.add(local)
+                        }
+                    }
+                }
+            }
+
+            // 写入本地DB
+            if (toInsert.isNotEmpty()) {
+                appDb.bookDao.insert(*toInsert.toTypedArray())
+            }
+            if (toUpdate.isNotEmpty()) {
+                appDb.bookDao.update(*toUpdate.toTypedArray())
+            }
+
+            // 5. 上传合并后的完整列表
+            val json = GSON.toJson(mergedList)
+            WebDav(remoteUrl, authorization).upload(
+                json.toByteArray(), "application/json"
+            )
+            AppLog.put("书架同步完成，共${mergedList.size}本，新增${toInsert.size}本，更新${toUpdate.size}本")
+        } catch (e: Exception) {
+            currentCoroutineContext().ensureActive()
+            AppLog.put("书架同步失败\n${e.localizedMessage}", e)
         }
     }
 

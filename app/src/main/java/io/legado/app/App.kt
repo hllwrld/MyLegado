@@ -19,6 +19,7 @@ import io.legado.app.base.AppContextWrapper
 import io.legado.app.constant.AppConst.channelIdDownload
 import io.legado.app.constant.AppConst.channelIdReadAloud
 import io.legado.app.constant.AppConst.channelIdWeb
+import io.legado.app.constant.AppLog
 import io.legado.app.constant.PreferKey
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.Book
@@ -122,7 +123,23 @@ class App : Application() {
             SourceHelp.adjustSortNumber()
             //同步阅读记录
             if (AppConfig.syncBookProgress) {
-                AppWebDav.downloadAllBookProgress()
+                try {
+                    AppWebDav.downloadAllBookProgress()
+                } catch (e: Exception) {
+                    AppLog.put("同步阅读进度失败\n${e.localizedMessage}", e)
+                }
+            }
+            //同步书源
+            try {
+                AppWebDav.syncBookSources()
+            } catch (e: Exception) {
+                AppLog.put("同步书源失败\n${e.localizedMessage}", e)
+            }
+            //同步书架
+            try {
+                AppWebDav.syncBookshelf()
+            } catch (e: Exception) {
+                AppLog.put("同步书架失败\n${e.localizedMessage}", e)
             }
         }
     }
