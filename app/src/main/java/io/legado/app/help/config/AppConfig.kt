@@ -37,7 +37,7 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
     var clickActionBC = appCtx.getPrefInt(PreferKey.clickActionBC, 1)
     var clickActionBR = appCtx.getPrefInt(PreferKey.clickActionBR, 1)
     var themeMode = appCtx.getPrefString(PreferKey.themeMode, "0")
-    var useDefaultCover = appCtx.getPrefBoolean(PreferKey.useDefaultCover, false)
+    var useDefaultCover = appCtx.getPrefBoolean(PreferKey.useDefaultCover, true)
     var optimizeRender = CanvasRecorderFactory.isSupport
             && appCtx.getPrefBoolean(PreferKey.optimizeRender, false)
     var recordLog = appCtx.getPrefBoolean(PreferKey.recordLog)
@@ -87,7 +87,7 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
             PreferKey.antiAlias -> useAntiAlias = appCtx.getPrefBoolean(PreferKey.antiAlias)
 
             PreferKey.useDefaultCover -> useDefaultCover =
-                appCtx.getPrefBoolean(PreferKey.useDefaultCover, false)
+                appCtx.getPrefBoolean(PreferKey.useDefaultCover, true)
 
             PreferKey.optimizeRender -> optimizeRender = CanvasRecorderFactory.isSupport
                     && appCtx.getPrefBoolean(PreferKey.optimizeRender, false)

@@ -173,6 +173,9 @@
     <string name="author">Author</string>
     <string name="author_show">Author: %s</string>
     <string name="aloud_stop">Speak Stopped</string>
+    <string name="save_book_to_file">Save book to file</string>
+    <string name="exporting_book">Exporting book…</string>
+    <string name="start_export">Export started, check notification for progress</string>
     <string name="clear_cache">Clear cache</string>
     <string name="clear_cache_success">Cache cleared</string>
     <string name="action_save">Save</string>

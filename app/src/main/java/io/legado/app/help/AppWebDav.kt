@@ -5,9 +5,14 @@ import io.legado.app.R
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.PreferKey
 import io.legado.app.data.appDb
+import io.legado.app.constant.BookType
 import io.legado.app.data.entities.Book
+import io.legado.app.data.entities.BookGroup
 import io.legado.app.data.entities.BookProgress
 import io.legado.app.data.entities.BookSource
+import io.legado.app.help.book.isLocal
+import io.legado.app.help.book.getRemoteUrl
+import io.legado.app.model.remote.RemoteBook
 import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.storage.Backup
@@ -17,7 +22,9 @@ import io.legado.app.lib.webdav.WebDav
 import io.legado.app.lib.webdav.WebDavException
 import io.legado.app.lib.webdav.WebDavFile
 import io.legado.app.model.remote.RemoteBookWebDav
+import io.legado.app.utils.isContentScheme
 import io.legado.app.utils.AlphanumComparator
+import io.legado.app.utils.defaultSharedPreferences
 import io.legado.app.utils.FileUtils
 import io.legado.app.utils.GSON
 import io.legado.app.utils.NetworkUtils
@@ -31,8 +38,14 @@ import io.legado.app.utils.isJsonArray
 import io.legado.app.utils.normalizeFileName
 import io.legado.app.utils.removePref
 import io.legado.app.utils.toastOnUi
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import splitties.init.appCtx
 import java.io.File
@@ -48,6 +61,8 @@ object AppWebDav {
     private val exportsWebDavUrl get() = "${rootWebDavUrl}books/"
     private val bgWebDavUrl get() = "${rootWebDavUrl}background/"
     private val syncDataUrl get() = "${rootWebDavUrl}syncData/"
+    private val bookshelfMutex = Mutex()
+    private val bookSourcesMutex = Mutex()
 
     var authorization: Authorization? = null
         private set
@@ -348,10 +363,14 @@ object AppWebDav {
      * 增量同步书源
      * 按 bookSourceUrl 合并，冲突时 lastUpdateTime 晚的优先
      */
-    suspend fun syncBookSources() {
+    suspend fun syncBookSources() { bookSourcesMutex.withLock {
         val authorization = authorization ?: return
         if (!NetworkUtils.isAvailable()) return
+        isSyncingBookSources = true
         try {
+            // 同步删除记录
+            val (_, deletedSources) = syncDeletions(authorization)
+
             // 1. 下载远端书源
             val remoteUrl = "${syncDataUrl}bookSource.json"
             val remoteSources: List<BookSource> = try {
@@ -376,30 +395,52 @@ object AppWebDav {
             val allKeys = (remoteMap.keys + localMap.keys).toSet()
             val mergedList = mutableListOf<BookSource>()
             val toInsert = mutableListOf<BookSource>()
+            val toDeleteLocal = mutableListOf<String>()
 
-            // 4. 合并
+            // 4. 合并（考虑删除记录）
             for (key in allKeys) {
                 val local = localMap[key]
                 val remote = remoteMap[key]
+                val isDeleted = deletedSources.containsKey(key)
                 when {
                     local != null && remote == null -> {
-                        mergedList.add(local)
-                    }
-                    local == null && remote != null -> {
-                        mergedList.add(remote)
-                        toInsert.add(remote)
-                    }
-                    local != null && remote != null -> {
-                        if (remote.lastUpdateTime > local.lastUpdateTime
-                            && remote.lastUpdateTime > 0L
-                        ) {
-                            mergedList.add(remote)
-                            toInsert.add(remote)
+                        if (isDeleted) {
+                            toDeleteLocal.add(key)
+                            AppLog.put("同步删除书源(来自其他设备): ${local.bookSourceName}")
                         } else {
                             mergedList.add(local)
                         }
                     }
+                    local == null && remote != null -> {
+                        if (isDeleted) {
+                            AppLog.put("跳过已删除的远端书源: ${remote.bookSourceName}")
+                        } else {
+                            mergedList.add(remote)
+                            toInsert.add(remote)
+                        }
+                    }
+                    local != null && remote != null -> {
+                        if (isDeleted) {
+                            toDeleteLocal.add(key)
+                            AppLog.put("同步删除书源(已标记删除): ${local.bookSourceName}")
+                        } else {
+                            if (remote.lastUpdateTime > local.lastUpdateTime
+                                && remote.lastUpdateTime > 0L
+                            ) {
+                                mergedList.add(remote)
+                                toInsert.add(remote)
+                            } else {
+                                mergedList.add(local)
+                            }
+                        }
+                    }
                 }
+            }
+
+            // 删除本地已标记删除的书源
+            if (toDeleteLocal.isNotEmpty()) {
+                toDeleteLocal.forEach { appDb.bookSourceDao.delete(it) }
+                AppLog.put("同步删除本地书源: ${toDeleteLocal.size}个")
             }
 
             // 写入本地DB
@@ -412,21 +453,30 @@ object AppWebDav {
             WebDav(remoteUrl, authorization).upload(
                 json.toByteArray(), "application/json"
             )
-            AppLog.put("书源同步完成，共${mergedList.size}个，新增/更新${toInsert.size}个")
+            AppLog.put("书源同步完成，共${mergedList.size}个，新增/更新${toInsert.size}个，删除${toDeleteLocal.size}个")
         } catch (e: Exception) {
             currentCoroutineContext().ensureActive()
             AppLog.put("书源同步失败\n${e.localizedMessage}", e)
+        } finally {
+            isSyncingBookSources = false
         }
-    }
+    } }
 
     /**
      * 增量同步书架
-     * 按 bookUrl 合并，冲突时 durChapterTime 晚的优先（只更新进度字段）
+     * 按 bookUrl 合并:
+     * - 进度: durChapterTime 晚的优先
+     * - 分组: 上传时取并集，但不覆盖本地已有分组（本地优先）
      */
-    suspend fun syncBookshelf() {
+    suspend fun syncBookshelf() { bookshelfMutex.withLock {
         val authorization = authorization ?: return
         if (!NetworkUtils.isAvailable()) return
+        isSyncingBookshelf = true
         try {
+            // 同步删除记录和分组定义
+            val (deletedBooks, _) = syncDeletions(authorization)
+            syncBookGroups(authorization)
+
             // 1. 下载远端书架
             val remoteUrl = "${syncDataUrl}bookshelf.json"
             val remoteBooks: List<Book> = try {
@@ -441,7 +491,7 @@ object AppWebDav {
                 emptyList()
             }
 
-            // 2. 获取本地书架
+            // 2. 获取本地书架（尽量晚读取，减少与用户操作的竞争窗口）
             val localBooks = appDb.bookDao.all
 
             // 3. 按 bookUrl 建立映射
@@ -452,8 +502,262 @@ object AppWebDav {
             val mergedList = mutableListOf<Book>()
             val toInsert = mutableListOf<Book>()
             val toUpdate = mutableListOf<Book>()
+            val toDeleteLocal = mutableListOf<Book>()
 
-            // 4. 合并
+            // 4. 合并（考虑删除记录）
+            for (key in allKeys) {
+                val local = localMap[key]
+                val remote = remoteMap[key]
+                val isDeleted = deletedBooks.containsKey(key)
+                when {
+                    local != null && remote == null -> {
+                        if (isDeleted) {
+                            // 本地有但已标记删除（其他设备删除的）→ 删除本地
+                            toDeleteLocal.add(local)
+                            AppLog.put("同步删除书籍(来自其他设备): ${local.name}")
+                        } else {
+                            mergedList.add(local)
+                        }
+                    }
+                    local == null && remote != null -> {
+                        if (isDeleted) {
+                            // 远端有但已标记删除 → 不添加到本地，也不加入合并列表
+                            AppLog.put("跳过已删除的远端书籍: ${remote.name}")
+                        } else {
+                            mergedList.add(remote)
+                            toInsert.add(remote)
+                        }
+                    }
+                    local != null && remote != null -> {
+                        if (isDeleted) {
+                            // 两端都有但已标记删除 → 删除本地，不加入合并列表
+                            toDeleteLocal.add(local)
+                            AppLog.put("同步删除书籍(已标记删除): ${local.name}")
+                        } else {
+                            var dbChanged = false
+                            // 进度: 远端更新则覆盖本地
+                            if (remote.durChapterTime > local.durChapterTime) {
+                                local.durChapterIndex = remote.durChapterIndex
+                                local.durChapterPos = remote.durChapterPos
+                                local.durChapterTitle = remote.durChapterTitle
+                                local.durChapterTime = remote.durChapterTime
+                                local.syncTime = System.currentTimeMillis()
+                                dbChanged = true
+                            }
+                            // 分组: 仅当远端有本地没有的分组时，才写入本地DB
+                            val mergedGroup = local.group or remote.group
+                            if (mergedGroup != local.group) {
+                                local.group = mergedGroup
+                                dbChanged = true
+                            }
+                            mergedList.add(local)
+                            if (dbChanged) {
+                                toUpdate.add(local)
+                            }
+                        }
+                    }
+                }
+            }
+
+            // 删除本地已标记删除的书籍
+            if (toDeleteLocal.isNotEmpty()) {
+                appDb.bookDao.delete(*toDeleteLocal.toTypedArray())
+                AppLog.put("同步删除本地书籍: ${toDeleteLocal.size}本")
+            }
+
+            // 写入本地DB
+            if (toInsert.isNotEmpty()) {
+                appDb.bookDao.insert(*toInsert.toTypedArray())
+            }
+            if (toUpdate.isNotEmpty()) {
+                appDb.bookDao.update(*toUpdate.toTypedArray())
+            }
+
+            // 确保书引用的分组在本地都存在
+            ensureBookGroupsExist(mergedList)
+
+            // 5. 上传合并后的完整列表
+            val booksWithGroup = mergedList.filter { it.group != 0L }
+            AppLog.put("有分组的书: ${booksWithGroup.joinToString { "${it.name}(group=${it.group})" }}")
+            val json = GSON.toJson(mergedList)
+            WebDav(remoteUrl, authorization).upload(
+                json.toByteArray(), "application/json"
+            )
+            AppLog.put("书架同步完成，共${mergedList.size}本，新增${toInsert.size}本，更新${toUpdate.size}本")
+        } catch (e: Exception) {
+            currentCoroutineContext().ensureActive()
+            AppLog.put("书架同步失败\n${e.localizedMessage}", e)
+        } finally {
+            isSyncingBookshelf = false
+        }
+    } }
+
+    /**
+     * 同步本地书籍文件到WebDAV（上传/下载）
+     * 独立于 syncBookshelf() 运行，避免大文件传输阻塞书架元数据同步
+     */
+    suspend fun syncLocalBookFiles() {
+        val authorization = authorization ?: return
+        if (!NetworkUtils.isAvailable()) return
+        val bookWebDav = defaultBookWebDav
+        if (bookWebDav == null) {
+            AppLog.put("syncLocalBookFiles: defaultBookWebDav 为空，跳过文件同步")
+            return
+        }
+
+        val allBooks = appDb.bookDao.all
+
+        // 上传本地书文件到WebDAV（仅origin为loc_book的纯本地书）
+        val booksToUpload = allBooks.filter {
+            it.isLocal && it.origin == BookType.localTag && it.originName.isNotEmpty()
+        }
+        if (booksToUpload.isNotEmpty()) {
+            AppLog.put("开始上传本地书文件: ${booksToUpload.size}本")
+            appCtx.toastOnUi("正在上传本地书文件(${booksToUpload.size}本)…")
+            var uploadCount = 0
+            for (book in booksToUpload) {
+                try {
+                    bookWebDav.upload(book)
+                    uploadCount++
+                    AppLog.put("上传本地书文件成功(${uploadCount}/${booksToUpload.size}): ${book.name}(${book.originName})")
+                    appCtx.toastOnUi("已上传: ${book.name} (${uploadCount}/${booksToUpload.size})")
+                } catch (e: Exception) {
+                    AppLog.put("上传本地书文件失败: ${book.name}(${book.originName}) bookUrl=${book.bookUrl} ${e.localizedMessage}", e)
+                    appCtx.toastOnUi("上传失败: ${book.name}")
+                }
+            }
+            if (uploadCount > 0) {
+                appCtx.toastOnUi("本地书文件上传完成: ${uploadCount}/${booksToUpload.size}")
+            }
+        }
+
+        // 下载远端同步过来的本地书文件（origin以webDav::开头但本地文件不存在）
+        val booksToDownload = allBooks.filter {
+            it.isLocal && it.getRemoteUrl() != null
+        }.filter { book ->
+            // 检查本地文件是否存在
+            try {
+                val uri = Uri.parse(book.bookUrl)
+                if (uri.isContentScheme()) {
+                    appCtx.contentResolver.openInputStream(uri)?.close()
+                    false // 文件存在，不需要下载
+                } else {
+                    !java.io.File(uri.path!!).exists()
+                }
+            } catch (_: Exception) {
+                true // 文件不存在或不可访问，需要下载
+            }
+        }
+        if (booksToDownload.isNotEmpty()) {
+            AppLog.put("开始下载远端书文件: ${booksToDownload.size}本")
+            appCtx.toastOnUi("正在下载远端书文件(${booksToDownload.size}本)…")
+            var downloadCount = 0
+            for (book in booksToDownload) {
+                try {
+                    val remoteBookUrl = book.getRemoteUrl()!!
+                    val remoteBook = bookWebDav.getRemoteBook(remoteBookUrl)
+                    if (remoteBook != null) {
+                        val localUri = downloadBookFile(bookWebDav, remoteBook)
+                        book.bookUrl = if (localUri.isContentScheme()) localUri.toString() else localUri.path!!
+                        book.save()
+                        downloadCount++
+                        AppLog.put("下载远端书文件成功(${downloadCount}/${booksToDownload.size}): ${book.name}(${book.originName})")
+                        appCtx.toastOnUi("已下载: ${book.name} (${downloadCount}/${booksToDownload.size})")
+                    } else {
+                        AppLog.put("下载远端书文件: 远端文件不存在 ${book.name} url=$remoteBookUrl")
+                    }
+                } catch (e: Exception) {
+                    AppLog.put("下载远端书文件失败: ${book.name} ${e.localizedMessage}", e)
+                    appCtx.toastOnUi("下载失败: ${book.name}")
+                }
+            }
+            if (downloadCount > 0) {
+                appCtx.toastOnUi("远端书文件下载完成: ${downloadCount}/${booksToDownload.size}")
+            }
+        }
+    }
+
+    /**
+     * 下载书籍文件，优先保存到用户设置的书籍目录，没设置则保存到应用内部存储
+     */
+    private suspend fun downloadBookFile(
+        bookWebDav: RemoteBookWebDav,
+        remoteBook: RemoteBook
+    ): Uri {
+        if (!NetworkUtils.isAvailable()) throw Exception("网络不可用")
+        // 优先使用用户设置的书籍保存目录
+        if (!AppConfig.defaultBookTreeUri.isNullOrBlank()) {
+            return bookWebDav.downloadRemoteBook(remoteBook)
+        }
+        // 没有设置书籍保存目录，保存到应用内部存储
+        val booksDir = File(appCtx.filesDir, "books")
+        if (!booksDir.exists()) booksDir.mkdirs()
+        val targetFile = File(booksDir, remoteBook.filename)
+        val webdav = WebDav(remoteBook.path, bookWebDav.authorization)
+        webdav.downloadInputStream().use { input ->
+            targetFile.outputStream().use { output ->
+                input.copyTo(output)
+            }
+        }
+        return Uri.fromFile(targetFile)
+    }
+
+    /**
+     * 检查书籍引用的分组是否都存在，不存在则自动创建
+     */
+    private fun ensureBookGroupsExist(books: List<Book>) {
+        val allGroupBits = books.fold(0L) { acc, book -> acc or book.group }
+        if (allGroupBits == 0L) return
+        val existingGroups = appDb.bookGroupDao.all.map { it.groupId }.toSet()
+        var bit = 1L
+        val toCreate = mutableListOf<BookGroup>()
+        while (bit <= allGroupBits && bit > 0) {
+            if (allGroupBits and bit != 0L && bit !in existingGroups) {
+                toCreate.add(
+                    BookGroup(
+                        groupId = bit,
+                        groupName = "同步分组$bit",
+                        order = appDb.bookGroupDao.maxOrder + toCreate.size + 1
+                    )
+                )
+            }
+            bit = bit shl 1
+        }
+        if (toCreate.isNotEmpty()) {
+            appDb.bookGroupDao.insert(*toCreate.toTypedArray())
+            AppLog.put("自动创建缺失分组: ${toCreate.joinToString { "${it.groupName}(id=${it.groupId})" }}")
+        }
+    }
+
+    /**
+     * 同步书籍分组
+     * 按 groupId 合并，本地和远端取并集
+     */
+    private suspend fun syncBookGroups(authorization: Authorization) {
+        try {
+            val remoteUrl = "${syncDataUrl}bookGroups.json"
+            val remoteGroups: List<BookGroup> = try {
+                val byteArray = WebDav(remoteUrl, authorization).download()
+                val json = String(byteArray)
+                if (json.isJsonArray()) {
+                    GSON.fromJsonArray<BookGroup>(json).getOrNull() ?: emptyList()
+                } else {
+                    emptyList()
+                }
+            } catch (e: Exception) {
+                AppLog.put("下载远端分组失败(可能是首次同步): ${e.localizedMessage}")
+                emptyList()
+            }
+
+            val localGroups = appDb.bookGroupDao.all
+            AppLog.put("分组同步: 本地${localGroups.size}个, 远端${remoteGroups.size}个")
+            val remoteMap = remoteGroups.associateBy { it.groupId }
+            val localMap = localGroups.associateBy { it.groupId }
+
+            val allKeys = (remoteMap.keys + localMap.keys).toSet()
+            val mergedList = mutableListOf<BookGroup>()
+            val toInsert = mutableListOf<BookGroup>()
+
             for (key in allKeys) {
                 val local = localMap[key]
                 val remote = remoteMap[key]
@@ -466,39 +770,197 @@ object AppWebDav {
                         toInsert.add(remote)
                     }
                     local != null && remote != null -> {
-                        if (remote.durChapterTime > local.durChapterTime) {
-                            local.durChapterIndex = remote.durChapterIndex
-                            local.durChapterPos = remote.durChapterPos
-                            local.durChapterTitle = remote.durChapterTitle
-                            local.durChapterTime = remote.durChapterTime
-                            local.syncTime = System.currentTimeMillis()
-                            mergedList.add(local)
-                            toUpdate.add(local)
-                        } else {
-                            mergedList.add(local)
-                        }
+                        mergedList.add(local)
                     }
                 }
             }
 
-            // 写入本地DB
             if (toInsert.isNotEmpty()) {
-                appDb.bookDao.insert(*toInsert.toTypedArray())
-            }
-            if (toUpdate.isNotEmpty()) {
-                appDb.bookDao.update(*toUpdate.toTypedArray())
+                appDb.bookGroupDao.insert(*toInsert.toTypedArray())
             }
 
-            // 5. 上传合并后的完整列表
             val json = GSON.toJson(mergedList)
             WebDav(remoteUrl, authorization).upload(
                 json.toByteArray(), "application/json"
             )
-            AppLog.put("书架同步完成，共${mergedList.size}本，新增${toInsert.size}本，更新${toUpdate.size}本")
+            AppLog.put("分组同步完成: 共${mergedList.size}个, 新增${toInsert.size}个")
         } catch (e: Exception) {
             currentCoroutineContext().ensureActive()
-            AppLog.put("书架同步失败\n${e.localizedMessage}", e)
+            AppLog.put("分组同步失败\n${e.localizedMessage}", e)
         }
+    }
+
+    private val autoSyncScope = MainScope()
+    private var autoSyncBookshelfJob: Job? = null
+    private var autoSyncBookSourcesJob: Job? = null
+    private var isSyncingBookshelf = false
+    private var isSyncingBookSources = false
+
+    fun autoSyncBookshelf() {
+        if (isSyncingBookshelf) return
+        AppLog.put("触发自动同步书架（5秒后执行）")
+        autoSyncBookshelfJob?.cancel()
+        autoSyncBookshelfJob = autoSyncScope.launch {
+            delay(5000)
+            try {
+                syncBookshelf()
+            } catch (e: Exception) {
+                AppLog.put("自动同步书架失败\n${e.localizedMessage}", e)
+            }
+        }
+    }
+
+    fun autoSyncBookSources() {
+        if (isSyncingBookSources) return
+        AppLog.put("触发自动同步书源（5秒后执行）")
+        autoSyncBookSourcesJob?.cancel()
+        autoSyncBookSourcesJob = autoSyncScope.launch {
+            delay(5000)
+            try {
+                syncBookSources()
+            } catch (e: Exception) {
+                AppLog.put("自动同步书源失败\n${e.localizedMessage}", e)
+            }
+        }
+    }
+
+    // ============ 删除记录跟踪 ============
+
+    private const val PREF_DELETED_BOOKS = "webdav_deleted_books"
+    private const val PREF_DELETED_SOURCES = "webdav_deleted_sources"
+    private const val DELETION_EXPIRE_DAYS = 30L
+
+    /**
+     * 记录书籍删除（在Book.delete()和批量删除时调用）
+     */
+    fun recordBookDeletion(bookUrl: String) {
+        if (bookUrl.isBlank()) return
+        val deletions = getLocalDeletedBooks().toMutableMap()
+        deletions[bookUrl] = System.currentTimeMillis()
+        saveLocalDeletedBooks(deletions)
+        AppLog.put("记录书籍删除: $bookUrl")
+    }
+
+    /**
+     * 记录书源删除
+     */
+    fun recordSourceDeletion(sourceUrl: String) {
+        if (sourceUrl.isBlank()) return
+        val deletions = getLocalDeletedSources().toMutableMap()
+        deletions[sourceUrl] = System.currentTimeMillis()
+        saveLocalDeletedSources(deletions)
+        AppLog.put("记录书源删除: $sourceUrl")
+    }
+
+    /**
+     * 当书籍重新加入书架时，移除删除记录
+     */
+    fun removeBookDeletion(bookUrl: String) {
+        val deletions = getLocalDeletedBooks().toMutableMap()
+        if (deletions.remove(bookUrl) != null) {
+            saveLocalDeletedBooks(deletions)
+            AppLog.put("移除书籍删除记录（重新加入书架）: $bookUrl")
+        }
+    }
+
+    private fun getLocalDeletedBooks(): Map<String, Long> {
+        val json = appCtx.defaultSharedPreferences.getString(PREF_DELETED_BOOKS, null)
+            ?: return emptyMap()
+        return try {
+            GSON.fromJsonObject<Map<String, Long>>(json).getOrNull() ?: emptyMap()
+        } catch (_: Exception) {
+            emptyMap()
+        }
+    }
+
+    private fun saveLocalDeletedBooks(deletions: Map<String, Long>) {
+        val cleaned = cleanExpiredDeletions(deletions)
+        appCtx.defaultSharedPreferences.edit()
+            .putString(PREF_DELETED_BOOKS, GSON.toJson(cleaned))
+            .apply()
+    }
+
+    private fun getLocalDeletedSources(): Map<String, Long> {
+        val json = appCtx.defaultSharedPreferences.getString(PREF_DELETED_SOURCES, null)
+            ?: return emptyMap()
+        return try {
+            GSON.fromJsonObject<Map<String, Long>>(json).getOrNull() ?: emptyMap()
+        } catch (_: Exception) {
+            emptyMap()
+        }
+    }
+
+    private fun saveLocalDeletedSources(deletions: Map<String, Long>) {
+        val cleaned = cleanExpiredDeletions(deletions)
+        appCtx.defaultSharedPreferences.edit()
+            .putString(PREF_DELETED_SOURCES, GSON.toJson(cleaned))
+            .apply()
+    }
+
+    private fun cleanExpiredDeletions(deletions: Map<String, Long>): Map<String, Long> {
+        val expireTime = System.currentTimeMillis() -
+            java.util.concurrent.TimeUnit.DAYS.toMillis(DELETION_EXPIRE_DAYS)
+        return deletions.filter { it.value > expireTime }
+    }
+
+    /**
+     * 同步删除记录（在syncBookshelf/syncBookSources中调用）
+     * 合并本地和远端的删除记录，返回合并后的集合
+     */
+    private suspend fun syncDeletions(
+        authorization: Authorization
+    ): Pair<Map<String, Long>, Map<String, Long>> {
+        val remoteUrl = "${syncDataUrl}deletions.json"
+
+        // 下载远端删除记录
+        data class DeletionData(
+            val books: Map<String, Long> = emptyMap(),
+            val sources: Map<String, Long> = emptyMap()
+        )
+
+        val remoteDeletions: DeletionData = try {
+            val byteArray = WebDav(remoteUrl, authorization).download()
+            val json = String(byteArray)
+            if (json.isJson()) {
+                GSON.fromJsonObject<DeletionData>(json).getOrNull() ?: DeletionData()
+            } else {
+                DeletionData()
+            }
+        } catch (_: Exception) {
+            DeletionData()
+        }
+
+        // 合并本地和远端删除记录（取较新的时间戳）
+        val localDeletedBooks = getLocalDeletedBooks()
+        val localDeletedSources = getLocalDeletedSources()
+
+        val mergedBooks = (localDeletedBooks.keys + remoteDeletions.books.keys)
+            .associateWith { key ->
+                maxOf(
+                    localDeletedBooks[key] ?: 0L,
+                    remoteDeletions.books[key] ?: 0L
+                )
+            }.let { cleanExpiredDeletions(it) }
+
+        val mergedSources = (localDeletedSources.keys + remoteDeletions.sources.keys)
+            .associateWith { key ->
+                maxOf(
+                    localDeletedSources[key] ?: 0L,
+                    remoteDeletions.sources[key] ?: 0L
+                )
+            }.let { cleanExpiredDeletions(it) }
+
+        // 保存合并后的记录到本地
+        saveLocalDeletedBooks(mergedBooks)
+        saveLocalDeletedSources(mergedSources)
+
+        // 上传合并后的记录到远端
+        val uploadData = DeletionData(mergedBooks, mergedSources)
+        val json = GSON.toJson(uploadData)
+        WebDav(remoteUrl, authorization).upload(json.toByteArray(), "application/json")
+
+        AppLog.put("删除记录同步: 书籍${mergedBooks.size}条, 书源${mergedSources.size}条")
+        return Pair(mergedBooks, mergedSources)
     }
 
 }

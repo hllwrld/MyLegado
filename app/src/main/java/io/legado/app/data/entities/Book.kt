@@ -12,6 +12,7 @@ import io.legado.app.constant.AppPattern
 import io.legado.app.constant.BookType
 import io.legado.app.constant.PageAnim
 import io.legado.app.data.appDb
+import io.legado.app.help.AppWebDav
 import io.legado.app.help.book.BookHelp
 import io.legado.app.help.book.ContentProcessor
 import io.legado.app.help.book.getFolderNameNoCache
@@ -377,6 +378,7 @@ data class Book(
             ReadBook.book = null
         }
         appDb.bookDao.delete(this)
+        AppWebDav.recordBookDeletion(bookUrl)
     }
 
     @Suppress("ConstPropertyName")

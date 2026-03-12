@@ -12,6 +12,7 @@ import io.legado.app.data.appDb
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.BookSource
+import io.legado.app.help.AppWebDav
 import io.legado.app.help.book.getBookSource
 import io.legado.app.help.book.removeType
 import io.legado.app.help.book.simulatedTotalChapterNum
@@ -111,6 +112,7 @@ class AudioPlayViewModel(application: Application) : BaseViewModel(application) 
         execute {
             AudioPlay.book?.let {
                 appDb.bookDao.delete(it)
+                AppWebDav.recordBookDeletion(it.bookUrl)
             }
         }.onSuccess {
             success?.invoke()

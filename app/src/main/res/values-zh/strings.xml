@@ -172,6 +172,9 @@
     <string name="author">作者</string>
     <string name="author_show">作者：%s</string>
     <string name="aloud_stop">朗读停止</string>
+    <string name="save_book_to_file">保存书籍到系统</string>
+    <string name="exporting_book">正在导出书籍…</string>
+    <string name="start_export">开始导出，可在通知栏查看进度</string>
     <string name="clear_cache">清理缓存</string>
     <string name="clear_cache_success">成功清理缓存</string>
     <string name="action_save">保存</string>

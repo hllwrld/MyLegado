@@ -9,6 +9,7 @@ import io.legado.app.constant.BookType
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookSource
+import io.legado.app.help.AppWebDav
 import io.legado.app.help.book.BookHelp
 import io.legado.app.help.book.isLocal
 import io.legado.app.help.book.removeType
@@ -56,6 +57,7 @@ class BookshelfManageViewModel(application: Application) : BaseViewModel(applica
         execute {
             appDb.bookDao.delete(*books.toTypedArray())
             books.forEach {
+                AppWebDav.recordBookDeletion(it.bookUrl)
                 if (it.isLocal) {
                     LocalBook.deleteBook(it, deleteOriginal)
                 }

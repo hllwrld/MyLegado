@@ -1625,6 +1625,7 @@ class ReadBookActivity : BaseReadBookActivity(),
         if (!BuildConfig.DEBUG) {
             Backup.autoBack(this)
         }
+        AppWebDav.autoSyncBookshelf()
     }
 
     override fun observeLiveBus() = binding.run {

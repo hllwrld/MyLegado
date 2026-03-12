@@ -19,6 +19,7 @@ import io.legado.app.exception.NoStackTraceException
 import io.legado.app.exception.TocEmptyException
 import io.legado.app.help.IntentData
 import io.legado.app.help.config.AppConfig
+import io.legado.app.help.source.SourceHelp
 import io.legado.app.help.source.exploreKinds
 import io.legado.app.model.CheckSource
 import io.legado.app.model.Debug
@@ -51,9 +52,9 @@ import kotlin.math.min
  * 校验书源
  */
 class CheckSourceService : BaseService() {
-    private var threadCount = AppConfig.threadCount
+    private var threadCount = 8
     private var searchCoroutine =
-        Executors.newFixedThreadPool(min(threadCount, AppConst.MAX_THREAD)).asCoroutineDispatcher()
+        Executors.newFixedThreadPool(threadCount).asCoroutineDispatcher()
     private var notificationMsg = appCtx.getString(R.string.service_starting)
     private var checkJob: Job? = null
     private var originSize = 0
@@ -117,14 +118,26 @@ class CheckSourceService : BaseService() {
                 checkSource(it)
             }.onEach {
                 finishCount++
-                notificationMsg = getString(
-                    R.string.progress_show,
-                    it.bookSourceName,
-                    finishCount,
-                    originSize
-                )
+                val invalidGroups = it.getInvalidGroupNames()
+                if (invalidGroups.isNotBlank()) {
+                    // 失效源自动删除
+                    SourceHelp.deleteBookSource(it.bookSourceUrl)
+                    notificationMsg = getString(
+                        R.string.progress_show,
+                        "${it.bookSourceName}(已删除)",
+                        finishCount,
+                        originSize
+                    )
+                } else {
+                    appDb.bookSourceDao.update(it)
+                    notificationMsg = getString(
+                        R.string.progress_show,
+                        it.bookSourceName,
+                        finishCount,
+                        originSize
+                    )
+                }
                 upNotification()
-                appDb.bookSourceDao.update(it)
             }.onCompletion {
                 stopSelf()
             }.collect()
@@ -140,10 +153,12 @@ class CheckSourceService : BaseService() {
             Debug.updateFinalMessage(source.bookSourceUrl, "校验成功")
         }.onFailure {
             coroutineContext.ensureActive()
-            when (it) {
-                is TimeoutCancellationException -> source.addGroup("校验超时")
-                is ScriptException, is WrappedException -> source.addGroup("js失效")
-                !is NoStackTraceException -> source.addGroup("网站失效")
+            when {
+                it is TimeoutCancellationException -> source.addGroup("校验超时")
+                it is ScriptException || it is WrappedException -> source.addGroup("js失效")
+                it is NoStackTraceException && it.message?.contains("验证码") == true ->
+                    source.addGroup("需要验证码")
+                it !is NoStackTraceException -> source.addGroup("网站失效")
             }
             source.addErrorComment(it)
             Debug.updateFinalMessage(source.bookSourceUrl, "校验失败:${it.localizedMessage}")

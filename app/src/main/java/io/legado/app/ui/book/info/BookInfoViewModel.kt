@@ -37,6 +37,7 @@ import io.legado.app.model.analyzeRule.AnalyzeUrl
 import io.legado.app.model.localBook.LocalBook
 import io.legado.app.model.webBook.WebBook
 import io.legado.app.utils.ArchiveUtils
+
 import io.legado.app.utils.UrlUtil
 import io.legado.app.utils.isContentScheme
 import io.legado.app.utils.postEvent
@@ -441,6 +442,7 @@ class BookInfoViewModel(application: Application) : BaseViewModel(application) {
                     AudioPlay.book = book
                 }
                 book.save()
+                AppWebDav.removeBookDeletion(book.bookUrl)
             }
             chapterListData.value?.let {
                 appDb.bookChapterDao.insert(*it.toTypedArray())
@@ -448,6 +450,9 @@ class BookInfoViewModel(application: Application) : BaseViewModel(application) {
             inBookshelf = true
         }.onSuccess {
             success?.invoke()
+            bookData.value?.bookUrl?.let {
+                postEvent(EventBus.UP_BOOKSHELF, it)
+            }
         }
     }
 
@@ -470,6 +475,9 @@ class BookInfoViewModel(application: Application) : BaseViewModel(application) {
             }
         }.onSuccess {
             success?.invoke()
+            bookData.value?.bookUrl?.let {
+                postEvent(EventBus.UP_BOOKSHELF, it)
+            }
         }
     }
 

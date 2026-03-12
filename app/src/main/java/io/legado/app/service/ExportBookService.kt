@@ -2,6 +2,7 @@ package io.legado.app.service
 
 import android.annotation.SuppressLint
 import android.content.Intent
+import android.net.Uri
 import androidx.core.app.NotificationCompat
 import androidx.lifecycle.lifecycleScope
 import com.bumptech.glide.Glide
@@ -21,9 +22,11 @@ import io.legado.app.help.AppWebDav
 import io.legado.app.help.book.BookHelp
 import io.legado.app.help.book.ContentProcessor
 import io.legado.app.help.book.getExportFileName
+import io.legado.app.help.book.isLocal
 import io.legado.app.help.book.isLocalModified
 import io.legado.app.help.config.AppConfig
 import io.legado.app.model.ReadBook
+import io.legado.app.model.webBook.WebBook
 import io.legado.app.model.localBook.LocalBook
 import io.legado.app.ui.book.cache.CacheActivity
 import io.legado.app.utils.FileDoc
@@ -85,7 +88,9 @@ class ExportBookService : BaseService() {
         val path: String,
         val type: String,
         val epubSize: Int = 1,
-        val epubScope: String? = null
+        val epubScope: String? = null,
+        val outputUri: String? = null,
+        val sourceUrl: String? = null
     )
 
     private val groupKey = "${appCtx.packageName}.exportBook"
@@ -100,10 +105,12 @@ class ExportBookService : BaseService() {
                 val bookUrl = intent.getStringExtra("bookUrl")!!
                 if (!exportProgress.contains(bookUrl)) {
                     val exportConfig = ExportConfig(
-                        path = intent.getStringExtra("exportPath")!!,
-                        type = intent.getStringExtra("exportType")!!,
+                        path = intent.getStringExtra("exportPath") ?: "",
+                        type = intent.getStringExtra("exportType") ?: "txt",
                         epubSize = intent.getIntExtra("epubSize", 1),
-                        epubScope = intent.getStringExtra("epubScope")
+                        epubScope = intent.getStringExtra("epubScope"),
+                        outputUri = intent.getStringExtra("outputUri"),
+                        sourceUrl = intent.getStringExtra("sourceUrl")
                     )
                     waitExportBooks[bookUrl] = exportConfig
                     exportMsg[bookUrl] = getString(R.string.export_wait)
@@ -142,7 +149,11 @@ class ExportBookService : BaseService() {
         startForeground(NotificationId.ExportBookService, notification.build())
     }
 
-    private fun upExportNotification(finish: Boolean = false) {
+    private fun upExportNotification(
+        finish: Boolean = false,
+        progress: Int = -1,
+        max: Int = -1
+    ) {
         val notification = NotificationCompat.Builder(this, AppConst.channelIdDownload)
             .setSmallIcon(R.drawable.ic_export)
             .setSubText(getString(R.string.export_book))
@@ -152,6 +163,9 @@ class ExportBookService : BaseService() {
             .setDeleteIntent(servicePendingIntent<ExportBookService>(IntentAction.stop))
             .setGroup(groupKey)
             .setOnlyAlertOnce(true)
+        if (progress >= 0 && max > 0) {
+            notification.setProgress(max, progress, false)
+        }
         if (!finish) {
             notification.setOngoing(true)
             notification.addAction(
@@ -187,7 +201,13 @@ class ExportBookService : BaseService() {
                         waitExportBooks.size
                     )
                     upExportNotification()
-                    if (exportConfig.type == "epub") {
+                    if (exportConfig.outputUri != null) {
+                        exportTxtToUri(
+                            Uri.parse(exportConfig.outputUri),
+                            book,
+                            exportConfig.sourceUrl
+                        )
+                    } else if (exportConfig.type == "epub") {
                         if (exportConfig.epubScope.isNullOrBlank()) {
                             exportEpub(exportConfig.path, book)
                         } else {
@@ -200,6 +220,9 @@ class ExportBookService : BaseService() {
                         exportTxt(exportConfig.path, book)
                     }
                     exportMsg[book.bookUrl] = getString(R.string.export_success)
+                    if (exportConfig.outputUri != null) {
+                        toastOnUi(R.string.export_success)
+                    }
                 } catch (e: Throwable) {
                     ensureActive()
                     exportMsg[bookUrl] = e.localizedMessage ?: "ERROR"
@@ -267,6 +290,62 @@ class ExportBookService : BaseService() {
             // 导出到webdav
             AppWebDav.exportWebDav(bookDoc.uri, filename)
         }
+    }
+
+    private suspend fun exportTxtToUri(uri: Uri, book: Book, sourceUrl: String?) {
+        exportMsg.remove(book.bookUrl)
+        postEvent(EventBus.EXPORT_BOOK, book.bookUrl)
+        val bookSource = sourceUrl?.let { appDb.bookSourceDao.getBookSource(it) }
+        var chapters = appDb.bookChapterDao.getChapterList(book.bookUrl)
+        // 对于在线书籍，如果章节列表太少，重新从书源加载完整目录
+        if (!book.isLocal && bookSource != null && chapters.size <= 1) {
+            WebBook.getChapterListAwait(bookSource, book).getOrNull()?.let {
+                if (it.size > chapters.size) {
+                    chapters = it
+                }
+            }
+        }
+        if (chapters.isEmpty()) {
+            throw NoStackTraceException("章节列表为空")
+        }
+        val contentProcessor = ContentProcessor.get(book.name, book.origin)
+        val useReplace = AppConfig.exportUseReplace && book.getUseReplaceRule()
+        val charset = Charset.forName(AppConfig.exportCharset)
+        contentResolver.openOutputStream(uri)?.bufferedWriter(charset)?.use { bw ->
+            bw.write(book.name)
+            bw.newLine()
+            bw.write(getString(R.string.author_show, book.getRealAuthor()))
+            bw.newLine()
+            bw.newLine()
+            val total = chapters.size
+            chapters.forEachIndexed { index, chapter ->
+                coroutineContext.ensureActive()
+                var content = BookHelp.getContent(book, chapter)
+                if (content == null && bookSource != null && !chapter.isVolume) {
+                    try {
+                        content = WebBook.getContentAwait(bookSource, book, chapter)
+                    } catch (e: Exception) {
+                        AppLog.put("导出章节[${chapter.title}]下载失败: ${e.localizedMessage}")
+                    }
+                }
+                val text = contentProcessor.getContent(
+                    book,
+                    chapter.apply { isVip = false },
+                    content ?: if (chapter.isVolume) "" else "",
+                    includeTitle = !AppConfig.exportNoChapterName,
+                    useReplace = useReplace,
+                    chineseConvert = false,
+                    reSegment = false
+                ).toString()
+                bw.newLine()
+                bw.newLine()
+                bw.write(text)
+                exportProgress[book.bookUrl] = index
+                notificationContentText = "${book.name} ${index + 1}/$total"
+                upExportNotification(progress = index + 1, max = total)
+                postEvent(EventBus.EXPORT_BOOK, book.bookUrl)
+            }
+        } ?: throw NoStackTraceException("无法打开输出流")
     }
 
     private suspend fun getAllContents(

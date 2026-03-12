@@ -32,8 +32,10 @@ import io.legado.app.help.book.isLocal
 import io.legado.app.help.book.isLocalTxt
 import io.legado.app.help.book.isWebFile
 import io.legado.app.help.book.removeType
+import io.legado.app.constant.IntentAction
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.config.LocalConfig
+import io.legado.app.service.ExportBookService
 import io.legado.app.lib.dialogs.alert
 import io.legado.app.lib.dialogs.selector
 import io.legado.app.lib.theme.accentColor
@@ -73,6 +75,7 @@ import io.legado.app.utils.sendToClip
 import io.legado.app.utils.shareWithQr
 import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.startActivity
+import io.legado.app.utils.startService
 import io.legado.app.utils.toastOnUi
 import io.legado.app.utils.viewbindingdelegate.viewBinding
 import io.legado.app.utils.visible
@@ -144,6 +147,19 @@ class BookInfoActivity :
             viewModel.bookSource = appDb.bookSourceDao.getBookSource(book.origin)
             viewModel.refreshBook(book)
         }
+    }
+    private val exportBookLauncher = registerForActivityResult(
+        ActivityResultContracts.CreateDocument("text/plain")
+    ) { uri ->
+        uri ?: return@registerForActivityResult
+        val book = viewModel.getBook(false) ?: return@registerForActivityResult
+        startService<ExportBookService> {
+            action = IntentAction.start
+            putExtra("bookUrl", book.bookUrl)
+            putExtra("outputUri", uri.toString())
+            putExtra("sourceUrl", book.origin)
+        }
+        toastOnUi(R.string.start_export)
     }
     private var chapterChanged = false
     private val waitDialog by lazy { WaitDialog(this) }
@@ -250,6 +266,13 @@ class BookInfoActivity :
                         }
                         viewModel.saveBook(it)
                     }
+                }
+            }
+
+            R.id.menu_save_to_file -> {
+                viewModel.getBook()?.let { book ->
+                    val fileName = "${book.name} 作者：${book.getRealAuthor()}.txt"
+                    exportBookLauncher.launch(fileName)
                 }
             }
 

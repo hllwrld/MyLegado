@@ -216,7 +216,7 @@ data class BookSource(
 
     fun getInvalidGroupNames(): String {
         return bookSourceGroup?.splitNotBlank(AppPattern.splitGroupRegex)?.toHashSet()?.filter {
-            "失效" in it || it == "校验超时"
+            "失效" in it || it == "校验超时" || it == "需要验证码"
         }?.joinToString() ?: ""
     }
 

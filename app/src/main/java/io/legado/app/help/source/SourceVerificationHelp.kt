@@ -5,6 +5,7 @@ import io.legado.app.data.entities.BaseSource
 import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.CacheManager
 import io.legado.app.help.IntentData
+import io.legado.app.model.Debug
 import io.legado.app.ui.association.VerificationCodeActivity
 import io.legado.app.ui.browser.WebViewActivity
 import io.legado.app.utils.isMainThread
@@ -41,6 +42,11 @@ object SourceVerificationHelp {
             ?: throw NoStackTraceException("getVerificationResult parameter source cannot be null")
         require(url.length < 64 * 1024) { "getVerificationResult parameter url too long" }
         check(!isMainThread) { "getVerificationResult must be called on a background thread" }
+
+        // 校验模式下，需要验证码的源视为失效，直接抛异常
+        if (Debug.isChecking) {
+            throw NoStackTraceException("需要验证码，视为失效")
+        }
 
         clearResult(source.getKey())
 

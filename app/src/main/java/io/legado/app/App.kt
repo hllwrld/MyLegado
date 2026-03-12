@@ -20,6 +20,7 @@ import io.legado.app.constant.AppConst.channelIdDownload
 import io.legado.app.constant.AppConst.channelIdReadAloud
 import io.legado.app.constant.AppConst.channelIdWeb
 import io.legado.app.constant.AppLog
+
 import io.legado.app.constant.PreferKey
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.Book
@@ -55,6 +56,7 @@ import io.legado.app.model.BookCover
 import io.legado.app.utils.ChineseUtils
 import io.legado.app.utils.LogUtils
 import io.legado.app.utils.defaultSharedPreferences
+import io.legado.app.utils.toastOnUi
 import io.legado.app.utils.getPrefBoolean
 import io.legado.app.utils.isDebuggable
 import kotlinx.coroutines.launch
@@ -130,16 +132,57 @@ class App : Application() {
                 }
             }
             //同步书源
+            if (AppWebDav.isOk) {
+                appCtx.toastOnUi("正在同步云端数据…")
+            }
             try {
                 AppWebDav.syncBookSources()
             } catch (e: Exception) {
                 AppLog.put("同步书源失败\n${e.localizedMessage}", e)
+                appCtx.toastOnUi("同步书源失败")
             }
             //同步书架
             try {
                 AppWebDav.syncBookshelf()
+                if (AppWebDav.isOk) {
+                    appCtx.toastOnUi("云端同步完成")
+                }
             } catch (e: Exception) {
                 AppLog.put("同步书架失败\n${e.localizedMessage}", e)
+                appCtx.toastOnUi("同步书架失败")
+            }
+            //同步本地书文件（独立于书架同步，避免阻塞）
+            try {
+                AppWebDav.syncLocalBookFiles()
+            } catch (e: Exception) {
+                AppLog.put("同步本地书文件失败\n${e.localizedMessage}", e)
+                appCtx.toastOnUi("同步本地书文件失败")
+            }
+        }
+        //监听数据库表变更，自动同步到云端
+        appDb.invalidationTracker.addObserver(
+            object : androidx.room.InvalidationTracker.Observer(
+                arrayOf("books", "book_groups")
+            ) {
+                override fun onInvalidated(tables: Set<String>) {
+                    AppWebDav.autoSyncBookshelf()
+                }
+            }
+        )
+        appDb.invalidationTracker.addObserver(
+            object : androidx.room.InvalidationTracker.Observer(
+                arrayOf("book_sources")
+            ) {
+                override fun onInvalidated(tables: Set<String>) {
+                    AppWebDav.autoSyncBookSources()
+                }
+            }
+        )
+        //退出应用时同步
+        LifecycleHelp.setOnAppFinishedListener {
+            Coroutine.async {
+                AppWebDav.syncBookSources()
+                AppWebDav.syncBookshelf()
             }
         }
     }
