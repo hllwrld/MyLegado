@@ -3,6 +3,7 @@ package io.legado.app.ui.main.bookshelf
 import android.annotation.SuppressLint
 import android.view.Menu
 import android.view.MenuItem
+import androidx.appcompat.widget.SearchView
 import androidx.core.view.indices
 import androidx.fragment.app.activityViewModels
 import androidx.fragment.app.viewModels
@@ -86,8 +87,34 @@ abstract class BaseBookshelfFragment(layoutId: Int) : VMBaseFragment<BookshelfVi
 
     abstract fun gotoTop()
 
+    abstract fun onLocalSearchQueryChanged(query: String?)
+
     override fun onCompatCreateOptionsMenu(menu: Menu) {
         menuInflater.inflate(R.menu.main_bookshelf, menu)
+        menu.findItem(R.id.menu_search_local)?.let { item ->
+            val searchView = item.actionView as? SearchView ?: return@let
+            searchView.queryHint = getString(R.string.search_local)
+            searchView.setOnQueryTextListener(object : SearchView.OnQueryTextListener {
+                override fun onQueryTextSubmit(query: String?): Boolean {
+                    return false
+                }
+
+                override fun onQueryTextChange(newText: String?): Boolean {
+                    onLocalSearchQueryChanged(newText)
+                    return true
+                }
+            })
+            item.setOnActionExpandListener(object : MenuItem.OnActionExpandListener {
+                override fun onMenuItemActionExpand(item: MenuItem): Boolean {
+                    return true
+                }
+
+                override fun onMenuItemActionCollapse(item: MenuItem): Boolean {
+                    onLocalSearchQueryChanged(null)
+                    return true
+                }
+            })
+        }
     }
 
     override fun onCompatOptionsItemSelected(item: MenuItem) {

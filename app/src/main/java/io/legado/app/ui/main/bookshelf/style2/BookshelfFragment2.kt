@@ -70,6 +70,7 @@ class BookshelfFragment2() : BaseBookshelfFragment(R.layout.fragment_bookshelf2)
     override var groupId = BookGroup.IdRoot
     override var books: List<Book> = emptyList()
     private var enableRefresh = true
+    private var searchKeyword: String? = null
 
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
         setSupportToolbar(binding.titleBar.toolbar)
@@ -165,6 +166,12 @@ class BookshelfFragment2() : BaseBookshelfFragment(R.layout.fragment_bookshelf2)
                         it.durChapterTime
                     }
                 }
+            }.map { list ->
+                val key = searchKeyword
+                if (key.isNullOrBlank()) list
+                else list.filter {
+                    it.name.contains(key, true) || it.author.contains(key, true)
+                }
             }.flowWithLifecycleAndDatabaseChangeFirst(
                 viewLifecycleOwner.lifecycle,
                 Lifecycle.State.RESUMED,
@@ -197,6 +204,11 @@ class BookshelfFragment2() : BaseBookshelfFragment(R.layout.fragment_bookshelf2)
 
     override fun onQueryTextChange(newText: String?): Boolean {
         return false
+    }
+
+    override fun onLocalSearchQueryChanged(query: String?) {
+        searchKeyword = query
+        initBooksData()
     }
 
     override fun gotoTop() {

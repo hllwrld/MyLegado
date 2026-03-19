@@ -131,6 +131,10 @@ class BookshelfFragment1() : BaseBookshelfFragment(R.layout.fragment_bookshelf1)
         AppConfig.saveTabPosition = tab.position
     }
 
+    override fun onLocalSearchQueryChanged(query: String?) {
+        fragmentMap.values.forEach { it.filterBooks(query) }
+    }
+
     override fun gotoTop() {
         fragmentMap[groupId]?.gotoTop()
     }

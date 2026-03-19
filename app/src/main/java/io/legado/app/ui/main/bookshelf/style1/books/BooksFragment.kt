@@ -79,6 +79,7 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
         private set
     private var upLastUpdateTimeJob: Job? = null
     private var enableRefresh = true
+    private var searchKeyword: String? = null
 
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
         arguments?.let {
@@ -183,6 +184,12 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
 
                     else -> list.sortedByDescending { it.durChapterTime }
                 }
+            }.map { list ->
+                val key = searchKeyword
+                if (key.isNullOrBlank()) list
+                else list.filter {
+                    it.name.contains(key, true) || it.author.contains(key, true)
+                }
             }.flowWithLifecycleAndDatabaseChangeFirst(
                 viewLifecycleOwner.lifecycle,
                 Lifecycle.State.RESUMED,
@@ -211,6 +218,11 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
                 }
             }
         }
+    }
+
+    fun filterBooks(key: String?) {
+        searchKeyword = key
+        upRecyclerData()
     }
 
     fun getBooks(): List<Book> {

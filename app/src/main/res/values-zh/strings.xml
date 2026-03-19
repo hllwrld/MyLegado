@@ -81,6 +81,8 @@
     <string name="version">版本</string>
     <string name="local">本地</string>
     <string name="search">搜索</string>
+    <string name="search_online">搜索(联网)</string>
+    <string name="search_local">搜索(本地)</string>
     <string name="origin_format">来源：%s</string>
     <string name="read_dur_progress">最近：%s</string>
     <string name="book_name">书名</string>
