@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <item
+        android:id="@+id/menu_book_info"
+        android:title="@string/book_info" />
+
+    <item
+        android:id="@+id/menu_select_group"
+        android:title="@string/group_select" />
+
+</menu>
