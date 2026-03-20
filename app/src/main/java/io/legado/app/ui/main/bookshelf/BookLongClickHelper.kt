@@ -66,4 +66,52 @@ object BookLongClickHelper {
                 .show()
         }
     }
+
+    fun showBatchPopupMenu(fragment: Fragment, anchor: View, books: List<Book>) {
+        val popupMenu = PopupMenu(fragment.requireContext(), anchor)
+        popupMenu.inflate(R.menu.bookshelf_batch_long_click)
+        popupMenu.setOnMenuItemClickListener { menuItem ->
+            when (menuItem.itemId) {
+                R.id.menu_batch_group -> {
+                    showBatchGroupSelectDialog(fragment, books)
+                }
+            }
+            true
+        }
+        popupMenu.show()
+    }
+
+    private fun showBatchGroupSelectDialog(fragment: Fragment, books: List<Book>) {
+        val context = fragment.requireContext()
+        fragment.lifecycleScope.launch {
+            val groups = withContext(Dispatchers.IO) {
+                appDb.bookGroupDao.all.filter { it.groupId > 0 }
+            }
+            if (groups.isEmpty()) return@launch
+            val groupNames = groups.map { it.groupName }.toTypedArray()
+            // 初始状态：只有所有书都有该分组才勾选
+            val checkedItems = groups.map { group ->
+                books.all { it.group and group.groupId != 0L }
+            }.toBooleanArray()
+            AlertDialog.Builder(context)
+                .setTitle(R.string.batch_group_select)
+                .setMultiChoiceItems(groupNames, checkedItems) { _, which, isChecked ->
+                    checkedItems[which] = isChecked
+                }
+                .setPositiveButton(R.string.ok) { _, _ ->
+                    var newGroup = 0L
+                    groups.forEachIndexed { index, bookGroup ->
+                        if (checkedItems[index]) {
+                            newGroup = newGroup or bookGroup.groupId
+                        }
+                    }
+                    fragment.lifecycleScope.launch(Dispatchers.IO) {
+                        books.forEach { it.group = newGroup }
+                        appDb.bookDao.update(*books.toTypedArray())
+                    }
+                }
+                .setNegativeButton(R.string.cancel, null)
+                .show()
+        }
+    }
 }

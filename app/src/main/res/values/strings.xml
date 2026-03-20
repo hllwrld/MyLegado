@@ -590,6 +590,7 @@
     <string name="select_image">Select a picture</string>
     <string name="group_manage">Group management</string>
     <string name="group_select">Group selection</string>
+    <string name="batch_group_select">Batch group selection</string>
     <string name="group_edit">Group editing</string>
     <string name="move_to_group">Move to group</string>
     <string name="add_group">Add to Groups</string>

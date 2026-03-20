@@ -14,6 +14,56 @@ abstract class BaseBooksAdapter<VB : ViewBinding>(context: Context) :
 
     override val keepScrollPosition = true
 
+    var inSelectMode = false
+        private set
+    val selectedBooks = HashSet<String>()
+
+    fun enterSelectMode() {
+        if (inSelectMode) return
+        inSelectMode = true
+        selectedBooks.clear()
+        notifyItemRangeChanged(0, itemCount, bundleOf("selectMode" to true))
+        (callBack as? CallBack)?.onSelectModeChanged(true)
+    }
+
+    fun exitSelectMode() {
+        if (!inSelectMode) return
+        inSelectMode = false
+        selectedBooks.clear()
+        notifyItemRangeChanged(0, itemCount, bundleOf("selectMode" to true))
+        (callBack as? CallBack)?.onSelectModeChanged(false)
+    }
+
+    fun toggleSelection(book: Book) {
+        val url = book.bookUrl
+        if (selectedBooks.contains(url)) {
+            selectedBooks.remove(url)
+        } else {
+            selectedBooks.add(url)
+        }
+        getItems().forEachIndexed { i, it ->
+            if (it.bookUrl == url) {
+                notifyItemChanged(i, bundleOf("selectMode" to true))
+                return@forEachIndexed
+            }
+        }
+        (callBack as? CallBack)?.onSelectionChanged(selectedBooks.size)
+    }
+
+    fun isSelected(book: Book): Boolean {
+        return selectedBooks.contains(book.bookUrl)
+    }
+
+    fun getSelectedBooks(): List<Book> {
+        return getItems().filter { selectedBooks.contains(it.bookUrl) }
+    }
+
+    private var callBack: Any? = null
+
+    fun setCallBack(cb: CallBack) {
+        callBack = cb
+    }
+
     override val diffItemCallback: DiffUtil.ItemCallback<Book> =
         object : DiffUtil.ItemCallback<Book>() {
 
@@ -92,5 +142,7 @@ abstract class BaseBooksAdapter<VB : ViewBinding>(context: Context) :
         fun open(book: Book)
         fun openBookInfo(view: View, book: Book)
         fun isUpdate(bookUrl: String): Boolean
+        fun onSelectModeChanged(inSelectMode: Boolean) {}
+        fun onSelectionChanged(count: Int) {}
     }
 }

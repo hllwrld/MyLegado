@@ -10,8 +10,10 @@ import io.legado.app.data.entities.Book
 import io.legado.app.databinding.ItemBookshelfListBinding
 import io.legado.app.help.book.isLocal
 import io.legado.app.help.config.AppConfig
+import io.legado.app.utils.gone
 import io.legado.app.utils.invisible
 import io.legado.app.utils.toTimeAgo
+import io.legado.app.utils.visible
 import splitties.views.onLongClick
 
 class BooksAdapterList(
@@ -39,6 +41,7 @@ class BooksAdapterList(
             ivCover.load(item.getDisplayCover(), item.name, item.author, false, item.origin)
             upRefresh(binding, item)
             upLastUpdateTime(binding, item)
+            upSelectMode(binding, item)
         } else {
             for (i in payloads.indices) {
                 val bundle = payloads[i] as Bundle
@@ -60,6 +63,7 @@ class BooksAdapterList(
 
                         "refresh" -> upRefresh(binding, item)
                         "lastUpdateTime" -> upLastUpdateTime(binding, item)
+                        "selectMode" -> upSelectMode(binding, item)
                     }
                 }
             }
@@ -92,11 +96,24 @@ class BooksAdapterList(
         }
     }
 
+    private fun upSelectMode(binding: ItemBookshelfListBinding, item: Book) {
+        if (inSelectMode) {
+            binding.checkbox.visible()
+            binding.checkbox.isChecked = isSelected(item)
+        } else {
+            binding.checkbox.gone()
+        }
+    }
+
     override fun registerListener(holder: ItemViewHolder, binding: ItemBookshelfListBinding) {
         holder.itemView.apply {
             setOnClickListener {
                 getItem(holder.layoutPosition)?.let {
-                    callBack.open(it)
+                    if (inSelectMode) {
+                        toggleSelection(it)
+                    } else {
+                        callBack.open(it)
+                    }
                 }
             }
 

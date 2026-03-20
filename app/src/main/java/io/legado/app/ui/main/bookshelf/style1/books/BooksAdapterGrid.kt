@@ -8,7 +8,9 @@ import io.legado.app.data.entities.Book
 import io.legado.app.databinding.ItemBookshelfGridBinding
 import io.legado.app.help.book.isLocal
 import io.legado.app.help.config.AppConfig
+import io.legado.app.utils.gone
 import io.legado.app.utils.invisible
+import io.legado.app.utils.visible
 import splitties.views.onLongClick
 
 class BooksAdapterGrid(context: Context, private val callBack: CallBack) :
@@ -28,6 +30,7 @@ class BooksAdapterGrid(context: Context, private val callBack: CallBack) :
             tvName.text = item.name
             ivCover.load(item.getDisplayCover(), item.name, item.author, false, item.origin)
             upRefresh(binding, item)
+            upSelectMode(binding, item)
         } else {
             for (i in payloads.indices) {
                 val bundle = payloads[i] as Bundle
@@ -36,6 +39,7 @@ class BooksAdapterGrid(context: Context, private val callBack: CallBack) :
                         "name" -> tvName.text = item.name
                         "cover" -> ivCover.load(item.getDisplayCover(), item.name, item.author, false, item.origin)
                         "refresh" -> upRefresh(binding, item)
+                        "selectMode" -> upSelectMode(binding, item)
                     }
                 }
             }
@@ -57,11 +61,24 @@ class BooksAdapterGrid(context: Context, private val callBack: CallBack) :
         }
     }
 
+    private fun upSelectMode(binding: ItemBookshelfGridBinding, item: Book) {
+        if (inSelectMode) {
+            binding.checkbox.visible()
+            binding.checkbox.isChecked = isSelected(item)
+        } else {
+            binding.checkbox.gone()
+        }
+    }
+
     override fun registerListener(holder: ItemViewHolder, binding: ItemBookshelfGridBinding) {
         holder.itemView.apply {
             setOnClickListener {
                 getItem(holder.layoutPosition)?.let {
-                    callBack.open(it)
+                    if (inSelectMode) {
+                        toggleSelection(it)
+                    } else {
+                        callBack.open(it)
+                    }
                 }
             }
 

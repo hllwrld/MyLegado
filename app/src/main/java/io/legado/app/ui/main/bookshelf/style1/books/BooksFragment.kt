@@ -1,9 +1,13 @@
 package io.legado.app.ui.main.bookshelf.style1.books
 
 import android.annotation.SuppressLint
+import android.graphics.Rect
 import android.os.Bundle
+import android.view.GestureDetector
+import android.view.MotionEvent
 import android.view.View
 import android.view.ViewConfiguration
+import androidx.activity.OnBackPressedCallback
 import androidx.core.view.isGone
 import androidx.fragment.app.activityViewModels
 import androidx.lifecycle.Lifecycle
@@ -79,6 +83,11 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
     private var upLastUpdateTimeJob: Job? = null
     private var enableRefresh = true
     private var searchKeyword: String? = null
+    private val backPressedCallback = object : OnBackPressedCallback(false) {
+        override fun handleOnBackPressed() {
+            booksAdapter.exitSelectMode()
+        }
+    }
 
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
         arguments?.let {
@@ -89,7 +98,49 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
             binding.refreshLayout.isEnabled = enableRefresh
         }
         initRecyclerView()
+        initSelectMode()
         upRecyclerData()
+    }
+
+    @SuppressLint("ClickableViewAccessibility")
+    private fun initSelectMode() {
+        booksAdapter.setCallBack(this)
+        requireActivity().onBackPressedDispatcher.addCallback(viewLifecycleOwner, backPressedCallback)
+        val gestureDetector = GestureDetector(
+            requireContext(),
+            object : GestureDetector.SimpleOnGestureListener() {
+                override fun onLongPress(e: MotionEvent) {
+                    if (isTouchOnBlank(e.x, e.y)) {
+                        if (booksAdapter.inSelectMode) {
+                            booksAdapter.exitSelectMode()
+                        } else {
+                            booksAdapter.enterSelectMode()
+                        }
+                    }
+                }
+            }
+        )
+        binding.rvBookshelf.addOnItemTouchListener(object : RecyclerView.OnItemTouchListener {
+            override fun onInterceptTouchEvent(rv: RecyclerView, e: MotionEvent): Boolean {
+                gestureDetector.onTouchEvent(e)
+                return false
+            }
+
+            override fun onTouchEvent(rv: RecyclerView, e: MotionEvent) {}
+            override fun onRequestDisallowInterceptTouchEvent(disallowIntercept: Boolean) {}
+        })
+    }
+
+    /**
+     * 判断触摸点是否在空白区域（item 之间的间距或最后一个 item 下方）
+     */
+    private fun isTouchOnBlank(x: Float, y: Float): Boolean {
+        val rv = binding.rvBookshelf
+        val child = rv.findChildViewUnder(x, y) ?: return true
+        // 检查触摸点是否落在 item 的 decoration 间距内（即 item view 边界之外）
+        val rect = Rect()
+        child.getHitRect(rect)
+        return !rect.contains(x.toInt(), y.toInt())
     }
 
     private fun initRecyclerView() {
@@ -100,10 +151,25 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
             binding.refreshLayout.isRefreshing = false
             activityViewModel.upToc(booksAdapter.getItems())
         }
+        val spacingPx = resources.getDimensionPixelSize(R.dimen.bookshelf_item_spacing)
         if (bookshelfLayout == 0) {
             binding.rvBookshelf.layoutManager = LinearLayoutManager(context)
+            binding.rvBookshelf.addItemDecoration(object : RecyclerView.ItemDecoration() {
+                override fun getItemOffsets(
+                    outRect: Rect, view: View, parent: RecyclerView, state: RecyclerView.State
+                ) {
+                    outRect.bottom = spacingPx
+                }
+            })
         } else {
             binding.rvBookshelf.layoutManager = GridLayoutManager(context, bookshelfLayout + 2)
+            binding.rvBookshelf.addItemDecoration(object : RecyclerView.ItemDecoration() {
+                override fun getItemOffsets(
+                    outRect: Rect, view: View, parent: RecyclerView, state: RecyclerView.State
+                ) {
+                    outRect.set(spacingPx / 2, spacingPx / 2, spacingPx / 2, spacingPx / 2)
+                }
+            })
         }
         if (bookshelfLayout == 0) {
             binding.rvBookshelf.setRecycledViewPool(activityViewModel.booksListRecycledViewPool)
@@ -197,7 +263,8 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
                 AppLog.put("书架更新出错", it)
             }.conflate().flowOn(Dispatchers.Default).collect { list ->
                 binding.tvEmptyMsg.isGone = list.isNotEmpty()
-                binding.refreshLayout.isEnabled = enableRefresh && list.isNotEmpty()
+                binding.refreshLayout.isEnabled =
+                            enableRefresh && list.isNotEmpty() && !booksAdapter.inSelectMode
                 booksAdapter.setItems(list)
                 delay(100)
             }
@@ -221,7 +288,9 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
 
     fun filterBooks(key: String?) {
         searchKeyword = key
-        upRecyclerData()
+        if (view != null) {
+            upRecyclerData()
+        }
     }
 
     fun getBooks(): List<Book> {
@@ -254,7 +323,25 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
     }
 
     override fun openBookInfo(view: View, book: Book) {
-        BookLongClickHelper.showPopupMenu(this, view, book)
+        if (booksAdapter.inSelectMode) {
+            val selectedBooks = booksAdapter.getSelectedBooks()
+            if (selectedBooks.isEmpty()) {
+                BookLongClickHelper.showPopupMenu(this, view, book)
+            } else {
+                BookLongClickHelper.showBatchPopupMenu(this, view, selectedBooks)
+            }
+        } else {
+            BookLongClickHelper.showPopupMenu(this, view, book)
+        }
+    }
+
+    override fun onSelectModeChanged(inSelectMode: Boolean) {
+        backPressedCallback.isEnabled = inSelectMode
+        binding.refreshLayout.isEnabled = enableRefresh && !inSelectMode
+    }
+
+    override fun onSelectionChanged(count: Int) {
+        // 可扩展：显示选中数量等 UI 反馈
     }
 
     override fun isUpdate(bookUrl: String): Boolean {

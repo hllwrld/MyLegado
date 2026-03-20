@@ -27,6 +27,17 @@
         app:layout_constraintTop_toTopOf="parent"
         tools:ignore="UnusedAttribute" />
 
+    <io.legado.app.lib.theme.view.ThemeCheckBox
+        android:id="@+id/checkbox"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:clickable="false"
+        android:focusable="false"
+        android:visibility="gone"
+        app:layout_constraintLeft_toLeftOf="@id/iv_cover"
+        app:layout_constraintTop_toTopOf="@id/iv_cover"
+        tools:ignore="TouchTargetSizeCheck" />
+
     <FrameLayout
         android:id="@+id/fl_has_new"
         android:layout_width="wrap_content"

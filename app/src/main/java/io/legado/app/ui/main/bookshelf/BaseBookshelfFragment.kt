@@ -89,10 +89,27 @@ abstract class BaseBookshelfFragment(layoutId: Int) : VMBaseFragment<BookshelfVi
 
     abstract fun onLocalSearchQueryChanged(query: String?)
 
+    private var localSearchView: SearchView? = null
+
+    /**
+     * 处理返回键：如果搜索展开则收起搜索，返回 true 表示已消费
+     */
+    open fun back(): Boolean {
+        localSearchView?.let {
+            if (!it.isIconified) {
+                it.setQuery("", false)
+                it.isIconified = true
+                return true
+            }
+        }
+        return false
+    }
+
     override fun onCompatCreateOptionsMenu(menu: Menu) {
         menuInflater.inflate(R.menu.main_bookshelf, menu)
         menu.findItem(R.id.menu_search_local)?.let { item ->
             val searchView = item.actionView as? SearchView ?: return@let
+            localSearchView = searchView
             searchView.queryHint = getString(R.string.search_local)
             searchView.setOnQueryTextListener(object : SearchView.OnQueryTextListener {
                 override fun onQueryTextSubmit(query: String?): Boolean {
