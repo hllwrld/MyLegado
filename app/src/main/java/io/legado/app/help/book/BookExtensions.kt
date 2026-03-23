@@ -62,6 +62,22 @@ val Book.isUmd: Boolean
 val Book.isPdf: Boolean
     get() = isLocal && originName.endsWith(".pdf", true)
 
+fun Book.getLocalFileSize(): Long {
+    if (!isLocal) return 0L
+    return try {
+        if (bookUrl.isUri()) {
+            val uri = bookUrl.toUri()
+            appCtx.contentResolver.openFileDescriptor(uri, "r")?.use {
+                it.statSize
+            } ?: 0L
+        } else {
+            File(bookUrl).length()
+        }
+    } catch (_: Exception) {
+        0L
+    }
+}
+
 val Book.isMobi: Boolean
     get() = isLocal && (originName.endsWith(".mobi", true) ||
             originName.endsWith(".azw3", true) ||

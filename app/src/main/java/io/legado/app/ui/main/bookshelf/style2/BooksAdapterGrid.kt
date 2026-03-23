@@ -8,6 +8,7 @@ import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookGroup
 import io.legado.app.databinding.ItemBookshelfGridBinding
 import io.legado.app.databinding.ItemBookshelfGridGroupBinding
+import io.legado.app.help.book.getLocalFileSize
 import io.legado.app.help.book.isLocal
 import io.legado.app.help.config.AppConfig
 import io.legado.app.utils.invisible
@@ -51,6 +52,7 @@ class BooksAdapterGrid(context: Context, callBack: CallBack) :
         fun onBind(item: Book, position: Int) = binding.run {
             tvName.text = item.name
             ivCover.load(item.getDisplayCover(), item.name, item.author, false, item.origin)
+            upFileSize(this, item)
             upRefresh(this, item)
         }
 
@@ -63,13 +65,16 @@ class BooksAdapterGrid(context: Context, callBack: CallBack) :
                     bundle.keySet().forEach {
                         when (it) {
                             "name" -> tvName.text = item.name
-                            "cover" -> ivCover.load(
-                                item.getDisplayCover(),
-                                item.name,
-                                item.author,
-                                false,
-                                item.origin
-                            )
+                            "cover" -> {
+                                ivCover.load(
+                                    item.getDisplayCover(),
+                                    item.name,
+                                    item.author,
+                                    false,
+                                    item.origin
+                                )
+                                upFileSize(this, item)
+                            }
 
                             "refresh" -> upRefresh(this, item)
                         }
@@ -84,6 +89,14 @@ class BooksAdapterGrid(context: Context, callBack: CallBack) :
             }
             binding.root.onLongClick {
                 callBack.onItemLongClick(binding.root, item)
+            }
+        }
+
+        private fun upFileSize(binding: ItemBookshelfGridBinding, item: Book) {
+            if (item.isLocal) {
+                binding.ivCover.setFileSize(item.getLocalFileSize())
+            } else {
+                binding.ivCover.clearFileSize()
             }
         }
 

@@ -8,6 +8,7 @@ import androidx.lifecycle.Lifecycle
 import io.legado.app.base.adapter.ItemViewHolder
 import io.legado.app.data.entities.Book
 import io.legado.app.databinding.ItemBookshelfListBinding
+import io.legado.app.help.book.getLocalFileSize
 import io.legado.app.help.book.isLocal
 import io.legado.app.help.config.AppConfig
 import io.legado.app.utils.gone
@@ -39,6 +40,7 @@ class BooksAdapterList(
             tvRead.text = item.durChapterTitle
             tvLast.text = item.latestChapterTitle
             ivCover.load(item.getDisplayCover(), item.name, item.author, false, item.origin)
+            upFileSize(binding, item)
             upRefresh(binding, item)
             upLastUpdateTime(binding, item)
             upSelectMode(binding, item)
@@ -51,15 +53,18 @@ class BooksAdapterList(
                         "author" -> tvAuthor.text = item.author
                         "dur" -> tvRead.text = item.durChapterTitle
                         "last" -> tvLast.text = item.latestChapterTitle
-                        "cover" -> ivCover.load(
-                            item.getDisplayCover(),
-                            item.name,
-                            item.author,
-                            false,
-                            item.origin,
-                            fragment,
-                            lifecycle
-                        )
+                        "cover" -> {
+                            ivCover.load(
+                                item.getDisplayCover(),
+                                item.name,
+                                item.author,
+                                false,
+                                item.origin,
+                                fragment,
+                                lifecycle
+                            )
+                            upFileSize(binding, item)
+                        }
 
                         "refresh" -> upRefresh(binding, item)
                         "lastUpdateTime" -> upLastUpdateTime(binding, item)
@@ -67,6 +72,14 @@ class BooksAdapterList(
                     }
                 }
             }
+        }
+    }
+
+    private fun upFileSize(binding: ItemBookshelfListBinding, item: Book) {
+        if (item.isLocal) {
+            binding.ivCover.setFileSize(item.getLocalFileSize())
+        } else {
+            binding.ivCover.clearFileSize()
         }
     }
 

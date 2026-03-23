@@ -6,6 +6,7 @@ import android.view.ViewGroup
 import io.legado.app.base.adapter.ItemViewHolder
 import io.legado.app.data.entities.Book
 import io.legado.app.databinding.ItemBookshelfGridBinding
+import io.legado.app.help.book.getLocalFileSize
 import io.legado.app.help.book.isLocal
 import io.legado.app.help.config.AppConfig
 import io.legado.app.utils.gone
@@ -29,6 +30,7 @@ class BooksAdapterGrid(context: Context, private val callBack: CallBack) :
         if (payloads.isEmpty()) {
             tvName.text = item.name
             ivCover.load(item.getDisplayCover(), item.name, item.author, false, item.origin)
+            upFileSize(binding, item)
             upRefresh(binding, item)
             upSelectMode(binding, item)
         } else {
@@ -37,12 +39,23 @@ class BooksAdapterGrid(context: Context, private val callBack: CallBack) :
                 bundle.keySet().forEach {
                     when (it) {
                         "name" -> tvName.text = item.name
-                        "cover" -> ivCover.load(item.getDisplayCover(), item.name, item.author, false, item.origin)
+                        "cover" -> {
+                            ivCover.load(item.getDisplayCover(), item.name, item.author, false, item.origin)
+                            upFileSize(binding, item)
+                        }
                         "refresh" -> upRefresh(binding, item)
                         "selectMode" -> upSelectMode(binding, item)
                     }
                 }
             }
+        }
+    }
+
+    private fun upFileSize(binding: ItemBookshelfGridBinding, item: Book) {
+        if (item.isLocal) {
+            binding.ivCover.setFileSize(item.getLocalFileSize())
+        } else {
+            binding.ivCover.clearFileSize()
         }
     }
 

@@ -8,6 +8,7 @@ import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookGroup
 import io.legado.app.databinding.ItemBookshelfListBinding
 import io.legado.app.databinding.ItemBookshelfListGroupBinding
+import io.legado.app.help.book.getLocalFileSize
 import io.legado.app.help.book.isLocal
 import io.legado.app.help.config.AppConfig
 import io.legado.app.utils.gone
@@ -53,6 +54,7 @@ class BooksAdapterList(context: Context, callBack: CallBack) :
             tvRead.text = item.durChapterTitle
             tvLast.text = item.latestChapterTitle
             ivCover.load(item.getDisplayCover(), item.name, item.author, false, item.origin)
+            upFileSize(this, item)
             flHasNew.visible()
             ivAuthor.visible()
             ivLast.visible()
@@ -72,13 +74,16 @@ class BooksAdapterList(context: Context, callBack: CallBack) :
                             "author" -> tvAuthor.text = item.author
                             "dur" -> tvRead.text = item.durChapterTitle
                             "last" -> tvLast.text = item.latestChapterTitle
-                            "cover" -> ivCover.load(
-                                item.getDisplayCover(),
-                                item.name,
-                                item.author,
-                                false,
-                                item.origin
-                            )
+                            "cover" -> {
+                                ivCover.load(
+                                    item.getDisplayCover(),
+                                    item.name,
+                                    item.author,
+                                    false,
+                                    item.origin
+                                )
+                                upFileSize(this, item)
+                            }
 
                             "refresh" -> upRefresh(this, item)
                         }
@@ -93,6 +98,14 @@ class BooksAdapterList(context: Context, callBack: CallBack) :
             }
             binding.root.onLongClick {
                 callBack.onItemLongClick(binding.root, item)
+            }
+        }
+
+        private fun upFileSize(binding: ItemBookshelfListBinding, item: Book) {
+            if (item.isLocal) {
+                binding.ivCover.setFileSize(item.getLocalFileSize())
+            } else {
+                binding.ivCover.clearFileSize()
             }
         }
 

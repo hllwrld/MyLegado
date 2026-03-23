@@ -5,6 +5,7 @@ import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Path
+import android.graphics.RectF
 import android.graphics.Typeface
 import android.graphics.drawable.Drawable
 import android.text.TextPaint
@@ -43,6 +44,7 @@ class CoverImageView @JvmOverloads constructor(
         private set
     private var name: String? = null
     private var author: String? = null
+    private var fileSize: String? = null
     private var nameHeight = 0f
     private var authorHeight = 0f
     private val namePaint by lazy {
@@ -59,6 +61,22 @@ class CoverImageView @JvmOverloads constructor(
         textPaint.textAlign = Paint.Align.CENTER
         textPaint
     }
+    private val fileSizePaint by lazy {
+        TextPaint().apply {
+            isAntiAlias = true
+            color = Color.WHITE
+            typeface = Typeface.DEFAULT_BOLD
+            textAlign = Paint.Align.LEFT
+        }
+    }
+    private val fileSizeBgPaint by lazy {
+        Paint().apply {
+            isAntiAlias = true
+            color = Color.argb(160, 0, 0, 0)
+            style = Paint.Style.FILL
+        }
+    }
+    private val fileSizeRect = RectF()
 
     override fun setLayoutParams(params: ViewGroup.LayoutParams?) {
         if (params != null) {
@@ -110,6 +128,9 @@ class CoverImageView @JvmOverloads constructor(
         if (defaultCover && !isInEditMode) {
             drawNameAuthor(canvas)
         }
+        if (!isInEditMode) {
+            drawFileSize(canvas)
+        }
     }
 
     private fun drawNameAuthor(canvas: Canvas) {
@@ -153,6 +174,50 @@ class CoverImageView @JvmOverloads constructor(
                     return@let
                 }
             }
+        }
+    }
+
+    private fun drawFileSize(canvas: Canvas) {
+        val size = fileSize ?: return
+        fileSizePaint.textSize = viewWidth / 8
+        val textWidth = fileSizePaint.measureText(size)
+        val textHeight = fileSizePaint.textHeight
+        val paddingH = viewWidth / 20
+        val paddingV = viewWidth / 30
+        val left = 4f
+        val bottom = viewHeight - 4f
+        val top = bottom - textHeight - paddingV * 2
+        fileSizeRect.set(left, top, left + textWidth + paddingH * 2, bottom)
+        canvas.drawRoundRect(fileSizeRect, 8f, 8f, fileSizeBgPaint)
+        canvas.drawText(
+            size,
+            left + paddingH,
+            bottom - paddingV - fileSizePaint.descent(),
+            fileSizePaint
+        )
+    }
+
+    fun setFileSize(sizeInBytes: Long) {
+        val sizeText = if (sizeInBytes > 0) {
+            val mb = sizeInBytes / 1048576.0
+            if (mb >= 1) {
+                String.format("%.1fMB", mb)
+            } else {
+                String.format("%.0fKB", sizeInBytes / 1024.0)
+            }
+        } else {
+            null
+        }
+        if (fileSize != sizeText) {
+            fileSize = sizeText
+            invalidate()
+        }
+    }
+
+    fun clearFileSize() {
+        if (fileSize != null) {
+            fileSize = null
+            invalidate()
         }
     }
 
