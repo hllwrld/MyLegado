@@ -276,8 +276,9 @@ class CoverImageView @JvmOverloads constructor(
         val paddingH = viewWidth / 20
         val paddingV = viewWidth / 30
         val left = 4f
-        val top = 4f
-        val bottom = top + textHeight + paddingV * 2
+        val bgHeight = textHeight + paddingV * 2
+        val top = (viewHeight - bgHeight) / 2
+        val bottom = top + bgHeight
         fileSizeRect.set(left, top, left + textWidth + paddingH * 2, bottom)
         canvas.drawRoundRect(fileSizeRect, 8f, 8f, fileSizeBgPaint)
         canvas.drawText(

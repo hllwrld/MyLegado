@@ -11,7 +11,6 @@ import io.legado.app.base.VMBaseActivity
 import io.legado.app.constant.BookType
 import io.legado.app.data.entities.Book
 import io.legado.app.databinding.ActivityBookInfoEditBinding
-import io.legado.app.help.book.BookHelp
 import io.legado.app.help.book.addType
 import io.legado.app.help.book.isAudio
 import io.legado.app.help.book.isImage
@@ -135,8 +134,7 @@ class BookInfoEditActivity :
         val customIntro = tieBookIntro.text?.toString()
         book.customIntro = if (customIntro == book.intro) null else customIntro
         book.editTime = System.currentTimeMillis()
-        BookHelp.updateCacheFolder(oldBook, book)
-        viewModel.saveBook(book) {
+        viewModel.saveBook(oldBook, book) {
             setResult(RESULT_OK)
             finish()
         }

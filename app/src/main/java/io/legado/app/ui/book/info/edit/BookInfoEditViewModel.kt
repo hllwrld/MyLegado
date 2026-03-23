@@ -7,6 +7,7 @@ import io.legado.app.base.BaseViewModel
 import io.legado.app.constant.AppLog
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.Book
+import io.legado.app.help.book.BookHelp
 import io.legado.app.model.ReadBook
 
 class BookInfoEditViewModel(application: Application) : BaseViewModel(application) {
@@ -22,8 +23,9 @@ class BookInfoEditViewModel(application: Application) : BaseViewModel(applicatio
         }
     }
 
-    fun saveBook(book: Book, success: (() -> Unit)?) {
+    fun saveBook(oldBook: Book, book: Book, success: (() -> Unit)?) {
         execute {
+            BookHelp.updateCacheFolder(oldBook, book)
             if (ReadBook.book?.bookUrl == book.bookUrl) {
                 ReadBook.book = book
             }
