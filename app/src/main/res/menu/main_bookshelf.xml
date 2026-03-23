@@ -60,6 +60,12 @@
         app:showAsAction="never" />
 
     <item
+        android:id="@+id/menu_sort_bookshelf"
+        android:icon="@drawable/ic_sort"
+        android:title="@string/sort_bookshelf"
+        app:showAsAction="never" />
+
+    <item
         android:id="@+id/menu_bookshelf_layout"
         android:icon="@drawable/ic_view_quilt"
         android:title="@string/bookshelf_layout"

@@ -55,6 +55,8 @@ class BooksAdapterList(context: Context, callBack: CallBack) :
             tvLast.text = item.latestChapterTitle
             ivCover.load(item.getDisplayCover(), item.name, item.author, false, item.origin)
             upFileSize(this, item)
+            ivCover.setOtherGroups(callBack.getOtherGroupNames(item))
+            ivCover.setEditTime(item.editTime)
             flHasNew.visible()
             ivAuthor.visible()
             ivLast.visible()
@@ -83,6 +85,8 @@ class BooksAdapterList(context: Context, callBack: CallBack) :
                                     item.origin
                                 )
                                 upFileSize(this, item)
+                                ivCover.setOtherGroups(callBack.getOtherGroupNames(item))
+                                ivCover.setEditTime(item.editTime)
                             }
 
                             "refresh" -> upRefresh(this, item)

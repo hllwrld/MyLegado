@@ -25,6 +25,8 @@ import io.legado.app.ui.book.group.GroupEditDialog
 import io.legado.app.ui.book.search.SearchActivity
 import io.legado.app.ui.main.bookshelf.BaseBookshelfFragment
 import io.legado.app.ui.main.bookshelf.BookLongClickHelper
+import io.legado.app.help.book.getLocalFileLastModified
+import io.legado.app.help.book.getLocalFileSize
 import io.legado.app.utils.cnCompare
 import io.legado.app.utils.flowWithLifecycleAndDatabaseChangeFirst
 import io.legado.app.utils.observeEvent
@@ -120,6 +122,15 @@ class BookshelfFragment2() : BaseBookshelfFragment(R.layout.fragment_bookshelf2)
         }
     }
 
+    override fun getCurrentBookGroup(): BookGroup? {
+        return if (groupId == BookGroup.IdRoot) {
+            // Root没有对应的BookGroup，返回"全部"分组
+            appDb.bookGroupDao.getByID(BookGroup.IdAll)
+        } else {
+            appDb.bookGroupDao.getByID(groupId)
+        }
+    }
+
     override fun upSort() {
         initBooksData()
     }
@@ -159,6 +170,51 @@ class BookshelfFragment2() : BaseBookshelfFragment(R.layout.fragment_bookshelf2)
 
                     4 -> list.sortedByDescending {
                         max(it.latestChapterTime, it.durChapterTime)
+                    }
+
+                    // 新排序：按大小
+                    10 -> {
+                        val sizeMap = list.associateWith { it.getLocalFileSize() }
+                        list.sortedByDescending { sizeMap[it] ?: 0L }
+                    }
+                    11 -> {
+                        val sizeMap = list.associateWith { it.getLocalFileSize() }
+                        list.sortedBy { sizeMap[it] ?: 0L }
+                    }
+                    // 按阅读时间
+                    12 -> list.sortedByDescending { it.durChapterTime }
+                    13 -> list.sortedBy { it.durChapterTime }
+                    // 按名称 (14=desc Z→A, 15=asc A→Z)
+                    14 -> list.sortedWith { o1, o2 -> o2.name.cnCompare(o1.name) }
+                    15 -> list.sortedWith { o1, o2 -> o1.name.cnCompare(o2.name) }
+                    // 按导入时间: 分三层排列 addTime → 文件时间 → durChapterTime
+                    16, 17 -> {
+                        val asc = AppConfig.getBookSortByGroupId(groupId) == 17
+                        val fileTimeMap = mutableMapOf<Book, Long>()
+                        val tierAddTime = mutableListOf<Book>()
+                        val tierFileTime = mutableListOf<Book>()
+                        val tierFallback = mutableListOf<Book>()
+                        for (book in list) {
+                            when {
+                                book.addTime > 0 -> tierAddTime.add(book)
+                                else -> {
+                                    val ft = book.getLocalFileLastModified()
+                                    if (ft > 0) {
+                                        fileTimeMap[book] = ft
+                                        tierFileTime.add(book)
+                                    } else {
+                                        tierFallback.add(book)
+                                    }
+                                }
+                            }
+                        }
+                        val sorted1 = if (asc) tierAddTime.sortedBy { it.addTime }
+                            else tierAddTime.sortedByDescending { it.addTime }
+                        val sorted2 = if (asc) tierFileTime.sortedBy { fileTimeMap[it] ?: 0L }
+                            else tierFileTime.sortedByDescending { fileTimeMap[it] ?: 0L }
+                        val sorted3 = if (asc) tierFallback.sortedBy { it.durChapterTime }
+                            else tierFallback.sortedByDescending { it.durChapterTime }
+                        sorted1 + sorted2 + sorted3
                     }
 
                     else -> list.sortedByDescending {
@@ -239,6 +295,17 @@ class BookshelfFragment2() : BaseBookshelfFragment(R.layout.fragment_bookshelf2)
 
     override fun isUpdate(bookUrl: String): Boolean {
         return activityViewModel.isUpdate(bookUrl)
+    }
+
+    override fun getOtherGroupNames(book: Book): String? {
+        val mask = if (groupId > 0L) {
+            book.group and groupId.inv()
+        } else {
+            book.group
+        }
+        if (mask == 0L) return null
+        val names = appDb.bookGroupDao.getGroupNames(mask)
+        return names.takeIf { it.isNotEmpty() }?.joinToString("\n")
     }
 
     fun getItemCount(): Int {

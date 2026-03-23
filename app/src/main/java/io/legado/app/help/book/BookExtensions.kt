@@ -78,6 +78,26 @@ fun Book.getLocalFileSize(): Long {
     }
 }
 
+fun Book.getLocalFileLastModified(): Long {
+    if (!isLocal) return 0L
+    return try {
+        if (bookUrl.isUri()) {
+            val uri = bookUrl.toUri()
+            appCtx.contentResolver.query(
+                uri,
+                arrayOf(android.provider.DocumentsContract.Document.COLUMN_LAST_MODIFIED),
+                null, null, null
+            )?.use {
+                if (it.moveToFirst()) it.getLong(0) else 0L
+            } ?: 0L
+        } else {
+            File(bookUrl).lastModified()
+        }
+    } catch (_: Exception) {
+        0L
+    }
+}
+
 val Book.isMobi: Boolean
     get() = isLocal && (originName.endsWith(".mobi", true) ||
             originName.endsWith(".azw3", true) ||
@@ -281,6 +301,8 @@ fun Book.updateTo(newBook: Book): Book {
     newBook.durChapterTime = durChapterTime
     newBook.group = group
     newBook.groupTime = groupTime
+    newBook.addTime = addTime
+    newBook.editTime = editTime
     newBook.order = order
     newBook.customCoverUrl = customCoverUrl
     newBook.customIntro = customIntro

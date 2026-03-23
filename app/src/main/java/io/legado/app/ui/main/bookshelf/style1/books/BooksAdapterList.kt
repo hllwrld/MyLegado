@@ -41,6 +41,8 @@ class BooksAdapterList(
             tvLast.text = item.latestChapterTitle
             ivCover.load(item.getDisplayCover(), item.name, item.author, false, item.origin)
             upFileSize(binding, item)
+            ivCover.setOtherGroups(callBack.getOtherGroupNames(item))
+            ivCover.setEditTime(item.editTime)
             upRefresh(binding, item)
             upLastUpdateTime(binding, item)
             upSelectMode(binding, item)
@@ -64,6 +66,8 @@ class BooksAdapterList(
                                 lifecycle
                             )
                             upFileSize(binding, item)
+                            ivCover.setOtherGroups(callBack.getOtherGroupNames(item))
+                            ivCover.setEditTime(item.editTime)
                         }
 
                         "refresh" -> upRefresh(binding, item)

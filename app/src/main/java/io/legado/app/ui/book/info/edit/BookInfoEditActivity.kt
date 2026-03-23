@@ -134,6 +134,7 @@ class BookInfoEditActivity :
         book.customCoverUrl = if (customCoverUrl == book.coverUrl) null else customCoverUrl
         val customIntro = tieBookIntro.text?.toString()
         book.customIntro = if (customIntro == book.intro) null else customIntro
+        book.editTime = System.currentTimeMillis()
         BookHelp.updateCacheFolder(oldBook, book)
         viewModel.saveBook(book) {
             setResult(RESULT_OK)

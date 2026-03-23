@@ -366,7 +366,7 @@
     <string name="sort_auto">智能排序</string>
     <string name="sort_manual">手动排序</string>
     <string name="sort_default">默认排序</string>
-    <string name="sort_by_name">名称排序</string>
+    <string name="sort_by_name">按名称</string>
     <string name="go_to_top">滚动到顶部</string>
     <string name="go_to_bottom">滚动到底部</string>
     <string name="read_y">已读: %s</string>
@@ -977,7 +977,12 @@
     <string name="enable_record">开启记录</string>
     <string name="copy_all">拷贝所有</string>
     <string name="auto_complete">自动补全</string>
-    <string name="sort_by_size">大小排序</string>
+    <string name="sort_by_size">按大小</string>
+    <string name="sort_bookshelf">排序</string>
+    <string name="sort_by_read_time">按阅读时间</string>
+    <string name="sort_by_add_time">按导入时间</string>
+    <string name="sort_ascending">升序</string>
+    <string name="sort_descending">降序</string>
     <string name="welcome_style">启动界面样式</string>
     <string name="welcome_style_summary">启动界面图片和是否显示文字等</string>
     <string name="show_welcome_text">显示文字</string>

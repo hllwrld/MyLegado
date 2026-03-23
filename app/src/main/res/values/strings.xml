@@ -368,7 +368,7 @@
     <string name="sort_auto">Sort automatically</string>
     <string name="sort_manual">Sort manually</string>
     <string name="sort_default">Sort default</string>
-    <string name="sort_by_name">Sort by name</string>
+    <string name="sort_by_name">By name</string>
     <string name="go_to_top">Scroll to the top</string>
     <string name="go_to_bottom">Scroll to the bottom</string>
     <string name="read_y">Read: %s</string>
@@ -980,7 +980,12 @@
     <string name="enable_record">Enable record</string>
     <string name="copy_all">Copy all</string>
     <string name="auto_complete">Automatic completion</string>
-    <string name="sort_by_size">Sort by size</string>
+    <string name="sort_by_size">By size</string>
+    <string name="sort_bookshelf">Sort</string>
+    <string name="sort_by_read_time">By read time</string>
+    <string name="sort_by_add_time">By import time</string>
+    <string name="sort_ascending">Ascending</string>
+    <string name="sort_descending">Descending</string>
     <string name="welcome_style">Launch interface style</string>
     <string name="welcome_style_summary">Startup screen image and whether to display text, etc.</string>
     <string name="show_welcome_text">Display text</string>

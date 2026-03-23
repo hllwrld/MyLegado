@@ -31,6 +31,8 @@ class BooksAdapterGrid(context: Context, private val callBack: CallBack) :
             tvName.text = item.name
             ivCover.load(item.getDisplayCover(), item.name, item.author, false, item.origin)
             upFileSize(binding, item)
+            ivCover.setOtherGroups(callBack.getOtherGroupNames(item))
+            ivCover.setEditTime(item.editTime)
             upRefresh(binding, item)
             upSelectMode(binding, item)
         } else {
@@ -42,6 +44,8 @@ class BooksAdapterGrid(context: Context, private val callBack: CallBack) :
                         "cover" -> {
                             ivCover.load(item.getDisplayCover(), item.name, item.author, false, item.origin)
                             upFileSize(binding, item)
+                            ivCover.setOtherGroups(callBack.getOtherGroupNames(item))
+                            ivCover.setEditTime(item.editTime)
                         }
                         "refresh" -> upRefresh(binding, item)
                         "selectMode" -> upSelectMode(binding, item)

@@ -105,6 +105,8 @@ class BookshelfFragment1() : BaseBookshelfFragment(R.layout.fragment_bookshelf1)
         }
     }
 
+    override fun getCurrentBookGroup(): BookGroup? = selectedGroup
+
     override fun upSort() {
         adapter.notifyDataSetChanged()
     }

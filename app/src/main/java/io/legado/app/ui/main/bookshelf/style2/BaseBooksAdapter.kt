@@ -44,6 +44,7 @@ abstract class BaseBooksAdapter<VH : RecyclerView.ViewHolder>(
                             oldItem.latestChapterTitle == newItem.latestChapterTitle &&
                             oldItem.lastCheckCount == newItem.lastCheckCount &&
                             oldItem.getDisplayCover() == newItem.getDisplayCover() &&
+                            oldItem.editTime == newItem.editTime &&
                             oldItem.getUnreadChapterNum() == newItem.getUnreadChapterNum()
                 }
 
@@ -72,7 +73,9 @@ abstract class BaseBooksAdapter<VH : RecyclerView.ViewHolder>(
                     if (oldItem.latestChapterTitle != newItem.latestChapterTitle) {
                         bundle.putString("last", newItem.latestChapterTitle)
                     }
-                    if (oldItem.getDisplayCover() != newItem.getDisplayCover()) {
+                    if (oldItem.getDisplayCover() != newItem.getDisplayCover()
+                        || oldItem.editTime != newItem.editTime
+                    ) {
                         bundle.putString("cover", newItem.getDisplayCover())
                     }
                     if (oldItem.lastCheckCount != newItem.lastCheckCount
@@ -140,5 +143,6 @@ abstract class BaseBooksAdapter<VH : RecyclerView.ViewHolder>(
         fun onItemLongClick(view: View, item: Any)
         fun isUpdate(bookUrl: String): Boolean
         fun getItems(): List<Any>
+        fun getOtherGroupNames(book: Book): String? = null
     }
 }

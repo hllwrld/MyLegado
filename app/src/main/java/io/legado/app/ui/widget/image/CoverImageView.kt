@@ -27,6 +27,7 @@ import io.legado.app.lib.theme.accentColor
 import io.legado.app.model.BookCover
 import io.legado.app.utils.textHeight
 import io.legado.app.utils.toStringArray
+import io.legado.app.utils.toTimeAgo
 
 /**
  * 封面
@@ -45,6 +46,8 @@ class CoverImageView @JvmOverloads constructor(
     private var name: String? = null
     private var author: String? = null
     private var fileSize: String? = null
+    private var otherGroups: String? = null
+    private var editTimeText: String? = null
     private var nameHeight = 0f
     private var authorHeight = 0f
     private val namePaint by lazy {
@@ -130,6 +133,8 @@ class CoverImageView @JvmOverloads constructor(
         }
         if (!isInEditMode) {
             drawFileSize(canvas)
+            drawOtherGroups(canvas)
+            drawEditTime(canvas)
         }
     }
 
@@ -219,6 +224,68 @@ class CoverImageView @JvmOverloads constructor(
             fileSize = null
             invalidate()
         }
+    }
+
+    private fun drawOtherGroups(canvas: Canvas) {
+        val groups = otherGroups ?: return
+        fileSizePaint.textSize = viewWidth / 9
+        val paddingH = viewWidth / 20
+        val paddingV = viewWidth / 30
+        val lines = groups.split("\n")
+        val lineHeight = fileSizePaint.textHeight
+        val totalTextHeight = lineHeight * lines.size
+        val top = 4f
+        // 计算最宽行的宽度
+        var maxWidth = 0f
+        for (line in lines) {
+            val w = fileSizePaint.measureText(line)
+            if (w > maxWidth) maxWidth = w
+        }
+        val right = viewWidth - 4f
+        val left = right - maxWidth - paddingH * 2
+        val bottom = top + totalTextHeight + paddingV * 2
+        fileSizeRect.set(left, top, right, bottom)
+        canvas.drawRoundRect(fileSizeRect, 8f, 8f, fileSizeBgPaint)
+        var y = top + paddingV + lineHeight - fileSizePaint.descent()
+        for (line in lines) {
+            canvas.drawText(line, left + paddingH, y, fileSizePaint)
+            y += lineHeight
+        }
+    }
+
+    fun setOtherGroups(text: String?) {
+        if (otherGroups != text) {
+            otherGroups = text
+            invalidate()
+        }
+    }
+
+    fun setEditTime(time: Long) {
+        val text = if (time > 0) time.toTimeAgo() else null
+        if (editTimeText != text) {
+            editTimeText = text
+            invalidate()
+        }
+    }
+
+    private fun drawEditTime(canvas: Canvas) {
+        val text = editTimeText ?: return
+        fileSizePaint.textSize = viewWidth / 9
+        val textWidth = fileSizePaint.measureText(text)
+        val textHeight = fileSizePaint.textHeight
+        val paddingH = viewWidth / 20
+        val paddingV = viewWidth / 30
+        val left = 4f
+        val top = 4f
+        val bottom = top + textHeight + paddingV * 2
+        fileSizeRect.set(left, top, left + textWidth + paddingH * 2, bottom)
+        canvas.drawRoundRect(fileSizeRect, 8f, 8f, fileSizeBgPaint)
+        canvas.drawText(
+            text,
+            left + paddingH,
+            bottom - paddingV - fileSizePaint.descent(),
+            fileSizePaint
+        )
     }
 
     fun setHeight(height: Int) {

@@ -53,6 +53,8 @@ class BooksAdapterGrid(context: Context, callBack: CallBack) :
             tvName.text = item.name
             ivCover.load(item.getDisplayCover(), item.name, item.author, false, item.origin)
             upFileSize(this, item)
+            ivCover.setOtherGroups(callBack.getOtherGroupNames(item))
+            ivCover.setEditTime(item.editTime)
             upRefresh(this, item)
         }
 
@@ -74,6 +76,8 @@ class BooksAdapterGrid(context: Context, callBack: CallBack) :
                                     item.origin
                                 )
                                 upFileSize(this, item)
+                                ivCover.setOtherGroups(callBack.getOtherGroupNames(item))
+                                ivCover.setEditTime(item.editTime)
                             }
 
                             "refresh" -> upRefresh(this, item)

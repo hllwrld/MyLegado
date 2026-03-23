@@ -82,6 +82,7 @@ abstract class BaseBooksAdapter<VB : ViewBinding>(context: Context) :
                     oldItem.lastCheckCount != newItem.lastCheckCount -> false
                     oldItem.getDisplayCover() != newItem.getDisplayCover() -> false
                     oldItem.getUnreadChapterNum() != newItem.getUnreadChapterNum() -> false
+                    oldItem.editTime != newItem.editTime -> false
                     else -> true
                 }
             }
@@ -100,7 +101,9 @@ abstract class BaseBooksAdapter<VB : ViewBinding>(context: Context) :
                 if (oldItem.latestChapterTitle != newItem.latestChapterTitle) {
                     bundle.putString("last", newItem.latestChapterTitle)
                 }
-                if (oldItem.getDisplayCover() != newItem.getDisplayCover()) {
+                if (oldItem.getDisplayCover() != newItem.getDisplayCover()
+                    || oldItem.editTime != newItem.editTime
+                ) {
                     bundle.putString("cover", newItem.getDisplayCover())
                 }
                 if (oldItem.lastCheckCount != newItem.lastCheckCount
@@ -144,5 +147,6 @@ abstract class BaseBooksAdapter<VB : ViewBinding>(context: Context) :
         fun isUpdate(bookUrl: String): Boolean
         fun onSelectModeChanged(inSelectMode: Boolean) {}
         fun onSelectionChanged(count: Int) {}
+        fun getOtherGroupNames(book: Book): String? = null
     }
 }
