@@ -544,11 +544,20 @@ object AppWebDav {
                                 local.syncTime = System.currentTimeMillis()
                                 dbChanged = true
                             }
-                            // 分组: 仅当远端有本地没有的分组时，才写入本地DB
-                            val mergedGroup = local.group or remote.group
-                            if (mergedGroup != local.group) {
-                                local.group = mergedGroup
+                            // 分组: 更新时间更晚的一方胜出
+                            if (remote.groupTime > local.groupTime) {
+                                local.group = remote.group
+                                local.groupTime = remote.groupTime
                                 dbChanged = true
+                            } else if (local.groupTime > remote.groupTime) {
+                                // 本地更新，保持不变
+                            } else {
+                                // 两边groupTime相同(旧数据均为0)，保持原有OR逻辑兼容过渡
+                                val mergedGroup = local.group or remote.group
+                                if (mergedGroup != local.group) {
+                                    local.group = mergedGroup
+                                    dbChanged = true
+                                }
                             }
                             mergedList.add(local)
                             if (dbChanged) {

@@ -264,6 +264,7 @@ fun Book.updateTo(newBook: Book): Book {
     newBook.durChapterPos = durChapterPos
     newBook.durChapterTime = durChapterTime
     newBook.group = group
+    newBook.groupTime = groupTime
     newBook.order = order
     newBook.customCoverUrl = customCoverUrl
     newBook.customIntro = customIntro

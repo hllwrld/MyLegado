@@ -171,6 +171,7 @@ class BookshelfViewModel(application: Application) : BaseViewModel(application) 
                         val book = it.first
                         if (groupId > 0) {
                             book.group = groupId
+                            book.groupTime = System.currentTimeMillis()
                         }
                         book.save()
                     }.onError { e ->

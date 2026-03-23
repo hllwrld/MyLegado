@@ -769,6 +769,7 @@ class BookInfoActivity :
         upGroup(groupId)
         viewModel.getBook()?.let { book ->
             book.group = groupId
+            book.groupTime = System.currentTimeMillis()
             if (viewModel.inBookshelf) {
                 viewModel.saveBook(book)
             } else if (groupId > 0) {

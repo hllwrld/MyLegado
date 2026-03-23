@@ -118,7 +118,10 @@ data class Book(
     var readConfig: ReadConfig? = null,
     //同步时间
     @ColumnInfo(defaultValue = "0")
-    var syncTime: Long = 0L
+    var syncTime: Long = 0L,
+    //分组修改时间(用于同步冲突解决)
+    @ColumnInfo(defaultValue = "0")
+    var groupTime: Long = 0L
 ) : Parcelable, BaseBook {
 
     override fun equals(other: Any?): Boolean {
@@ -349,6 +352,7 @@ data class Book(
         newBook.durChapterPos = durChapterPos
         newBook.durChapterTime = durChapterTime
         newBook.group = group
+        newBook.groupTime = groupTime
         newBook.order = order
         newBook.customCoverUrl = customCoverUrl
         newBook.customIntro = customIntro

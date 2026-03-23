@@ -58,6 +58,7 @@ object BookLongClickHelper {
                         }
                     }
                     book.group = newGroup
+                    book.groupTime = System.currentTimeMillis()
                     fragment.lifecycleScope.launch(Dispatchers.IO) {
                         appDb.bookDao.update(book)
                     }
@@ -106,7 +107,10 @@ object BookLongClickHelper {
                         }
                     }
                     fragment.lifecycleScope.launch(Dispatchers.IO) {
-                        books.forEach { it.group = newGroup }
+                        books.forEach {
+                            it.group = newGroup
+                            it.groupTime = System.currentTimeMillis()
+                        }
                         appDb.bookDao.update(*books.toTypedArray())
                     }
                 }

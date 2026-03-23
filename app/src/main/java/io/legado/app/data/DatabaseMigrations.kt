@@ -371,4 +371,13 @@ object DatabaseMigrations {
     )
     class Migration_64_65 : AutoMigrationSpec
 
+    @Suppress("ClassName")
+    class Migration_75_76 : AutoMigrationSpec {
+        override fun onPostMigrate(db: SupportSQLiteDatabase) {
+            db.execSQL(
+                "UPDATE books SET groupTime = ${System.currentTimeMillis()} WHERE `group` != 0"
+            )
+        }
+    }
+
 }

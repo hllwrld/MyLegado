@@ -160,11 +160,11 @@ interface BookDao {
     @Query("update books set durChapterPos = :pos where bookUrl = :bookUrl")
     fun upProgress(bookUrl: String, pos: Int)
 
-    @Query("update books set `group` = :newGroupId where `group` = :oldGroupId")
-    fun upGroup(oldGroupId: Long, newGroupId: Long)
+    @Query("update books set `group` = :newGroupId, groupTime = :now where `group` = :oldGroupId")
+    fun upGroup(oldGroupId: Long, newGroupId: Long, now: Long = System.currentTimeMillis())
 
-    @Query("update books set `group` = `group` - :group where `group` & :group > 0")
-    fun removeGroup(group: Long)
+    @Query("update books set `group` = `group` - :group, groupTime = :now where `group` & :group > 0")
+    fun removeGroup(group: Long, now: Long = System.currentTimeMillis())
 
     @Query("delete from books where type & ${BookType.notShelf} > 0")
     fun deleteNotShelfBook()
