@@ -64,6 +64,12 @@ object AppWebDav {
     private val bookshelfMutex = Mutex()
     private val bookSourcesMutex = Mutex()
 
+    /** 本次启动期间 WebDav 上传失败计数，达到阈值后跳过后续上传下载 */
+    private var webDavFailureCount = 0
+    private const val MAX_WEBDAV_FAILURES = 2
+
+    val isWebDavSuspended get() = webDavFailureCount >= MAX_WEBDAV_FAILURES
+
     var authorization: Authorization? = null
         private set
 
@@ -608,6 +614,10 @@ object AppWebDav {
     suspend fun syncLocalBookFiles() {
         val authorization = authorization ?: return
         if (!NetworkUtils.isAvailable()) return
+        if (isWebDavSuspended) {
+            AppLog.put("syncLocalBookFiles: 本次启动WebDav已失败${webDavFailureCount}次，跳过文件同步")
+            return
+        }
         val bookWebDav = defaultBookWebDav
         if (bookWebDav == null) {
             AppLog.put("syncLocalBookFiles: defaultBookWebDav 为空，跳过文件同步")
@@ -625,13 +635,19 @@ object AppWebDav {
             appCtx.toastOnUi("正在上传本地书文件(${booksToUpload.size}本)…")
             var uploadCount = 0
             for (book in booksToUpload) {
+                if (isWebDavSuspended) {
+                    AppLog.put("WebDav已失败${webDavFailureCount}次，跳过剩余上传")
+                    appCtx.toastOnUi("WebDav连续失败，跳过剩余上传，等待下次启动重试")
+                    break
+                }
                 try {
                     bookWebDav.upload(book)
                     uploadCount++
                     AppLog.put("上传本地书文件成功(${uploadCount}/${booksToUpload.size}): ${book.name}(${book.originName})")
                     appCtx.toastOnUi("已上传: ${book.name} (${uploadCount}/${booksToUpload.size})")
                 } catch (e: Exception) {
-                    AppLog.put("上传本地书文件失败: ${book.name}(${book.originName}) bookUrl=${book.bookUrl} ${e.localizedMessage}", e)
+                    webDavFailureCount++
+                    AppLog.put("上传本地书文件失败(${webDavFailureCount}/${MAX_WEBDAV_FAILURES}): ${book.name}(${book.originName}) bookUrl=${book.bookUrl} ${e.localizedMessage}", e)
                     appCtx.toastOnUi("上传失败: ${book.name}")
                 }
             }
@@ -662,6 +678,11 @@ object AppWebDav {
             appCtx.toastOnUi("正在下载远端书文件(${booksToDownload.size}本)…")
             var downloadCount = 0
             for (book in booksToDownload) {
+                if (isWebDavSuspended) {
+                    AppLog.put("WebDav已失败${webDavFailureCount}次，跳过剩余下载")
+                    appCtx.toastOnUi("WebDav连续失败，跳过剩余下载，等待下次启动重试")
+                    break
+                }
                 try {
                     val remoteBookUrl = book.getRemoteUrl()!!
                     val remoteBook = bookWebDav.getRemoteBook(remoteBookUrl)
@@ -676,7 +697,8 @@ object AppWebDav {
                         AppLog.put("下载远端书文件: 远端文件不存在 ${book.name} url=$remoteBookUrl")
                     }
                 } catch (e: Exception) {
-                    AppLog.put("下载远端书文件失败: ${book.name} ${e.localizedMessage}", e)
+                    webDavFailureCount++
+                    AppLog.put("下载远端书文件失败(${webDavFailureCount}/${MAX_WEBDAV_FAILURES}): ${book.name} ${e.localizedMessage}", e)
                     appCtx.toastOnUi("下载失败: ${book.name}")
                 }
             }
