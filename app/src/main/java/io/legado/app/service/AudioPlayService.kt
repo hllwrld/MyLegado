@@ -193,6 +193,8 @@ class AudioPlayService : BaseService(),
         }
         isRun = false
         abandonFocus()
+        AudioPlay.durChapterPos = exoPlayer.currentPosition.toInt()
+        AudioPlay.saveRead()
         exoPlayer.release()
         mediaSessionCompat?.release()
         unregisterReceiver(broadcastReceiver)
@@ -256,6 +258,8 @@ class AudioPlayService : BaseService(),
             upPlayProgressJob?.cancel()
             position = exoPlayer.currentPosition.toInt()
             if (exoPlayer.isPlaying) exoPlayer.pause()
+            AudioPlay.durChapterPos = position
+            AudioPlay.saveRead()
             upMediaSessionPlaybackState(PlaybackStateCompat.STATE_PAUSED)
             AudioPlay.status = Status.PAUSE
             postEvent(EventBus.AUDIO_STATE, Status.PAUSE)
@@ -300,6 +304,8 @@ class AudioPlayService : BaseService(),
     private fun adjustProgress(position: Int) {
         this.position = position
         exoPlayer.seekTo(position.toLong())
+        AudioPlay.durChapterPos = position
+        AudioPlay.saveRead()
     }
 
     /**
@@ -403,14 +409,14 @@ class AudioPlayService : BaseService(),
         postEvent(EventBus.AUDIO_DS, timeMinute)
         upAudioPlayNotification()
         dsJob?.cancel()
+        if (timeMinute <= 0) return
         dsJob = lifecycleScope.launch {
             while (isActive) {
                 delay(60000)
                 if (!pause) {
-                    if (timeMinute >= 0) {
-                        timeMinute--
-                    }
-                    if (timeMinute == 0) {
+                    timeMinute--
+                    if (timeMinute <= 0) {
+                        timeMinute = 0
                         AudioPlay.stop()
                         postEvent(EventBus.AUDIO_DS, timeMinute)
                         break

@@ -389,9 +389,16 @@ object AudioPlay : CoroutineScope by MainScope() {
         }
     }
 
+    private var lastSaveTime = 0L
+    private val SAVE_INTERVAL = 30_000L // 30秒保存一次进度
+
     fun playPositionChanged(position: Int) {
         durChapterPos = position
-        saveRead()
+        val now = System.currentTimeMillis()
+        if (now - lastSaveTime >= SAVE_INTERVAL) {
+            lastSaveTime = now
+            saveRead()
+        }
     }
 
     fun upLoading(loading: Boolean) {
