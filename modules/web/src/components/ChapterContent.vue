@@ -13,7 +13,7 @@
       @error.once="proxyImage"
       loading="lazy"
     />
-    <p v-else :style="{ fontFamily, fontSize }" v-html="para" @error.capture="handleImgLoadError" />
+    <p v-else :style="{ fontFamily, fontSize }" v-html="replaceImage(para)" @error.capture="handleImgLoadError" />
   </div>
 </template>
 
@@ -25,6 +25,7 @@ import type { webReadConfig } from '@/web'
 
 const store = useBookStore()
 const readWidth = computed(() => store.config.readWidth)
+const _fontSize = computed(() => store.config.fontSize)
 const bookUrl = computed(() => store.readingBook.bookUrl)
 
 const props = defineProps<{
@@ -44,7 +45,7 @@ const replaceImage = (content: string) => {
       const proxySrc = API.getProxyImageUrl(
         bookUrl.value,
         src,
-        fontSize.value * 2,
+        _fontSize.value * 2,
       )
       return match.replace(src, proxySrc)
     }
@@ -59,7 +60,7 @@ const getImageSrc = (content: string) => {
     return API.getProxyImageUrl(
       bookUrl.value,
       src,
-      useBookStore().config.readWidth,
+      readWidth.value,
     )
   return src
 }
@@ -98,7 +99,6 @@ const handleImgLoadError = (event: Event) => {
 }
 
 const calculateWordCount = (paragraph: string) => {
-  const imgPattern = /<img[^>]*src="[^"]*(?:"[^>]+\})?"[^>]*>/g
   //内嵌图片文字为1
   const imagePlaceHolder = ' '
   return paragraph.replace(imgPattern, imagePlaceHolder).length
