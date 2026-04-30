@@ -1244,4 +1244,11 @@
     <string name="auto_check_new_backup_t">自动检查新备份</string>
     <string name="auto_check_new_backup_s">打开软件时检查是否有新备份，有新备份时提示是否更新</string>
     <string name="sys_image_picker">系统图片选择器</string>
+    <string name="ai_chat">AI 对话</string>
+    <string name="ai_chat_hint">输入你的问题...</string>
+    <string name="send">发送</string>
+    <string name="template">模板</string>
+    <string name="save_as_template">保存为模板</string>
+    <string name="template_title">模板标题</string>
+    <string name="clear_conversation">清空对话</string>
 </resources>

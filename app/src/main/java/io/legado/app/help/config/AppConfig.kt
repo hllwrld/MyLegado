@@ -738,5 +738,32 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
             appCtx.putPrefBoolean(PreferKey.welcomeShowIconDark, value)
         }
 
+    var aiChatBaseUrl: String
+        get() = appCtx.getPrefString(PreferKey.aiChatBaseUrl)
+            ?: "http://model.mify.ai.srv/anthropic"
+        set(value) {
+            appCtx.putPrefString(PreferKey.aiChatBaseUrl, value)
+        }
+
+    var aiChatApiKey: String
+        get() = appCtx.getPrefString(PreferKey.aiChatApiKey)
+            ?: "sk-USQIzrViGrSDgNkqiox3Gng5lKkRKDvbPnIDtQ91WSIVZNWa"
+        set(value) {
+            appCtx.putPrefString(PreferKey.aiChatApiKey, value)
+        }
+
+    var aiChatModel: String
+        get() = appCtx.getPrefString(PreferKey.aiChatModel)
+            ?: "ppio/pa/claude-opus-4-6"
+        set(value) {
+            appCtx.putPrefString(PreferKey.aiChatModel, value)
+        }
+
+    var aiChatApiFormat: String
+        get() = appCtx.getPrefString(PreferKey.aiChatApiFormat) ?: "anthropic"
+        set(value) {
+            appCtx.putPrefString(PreferKey.aiChatApiFormat, value)
+        }
+
 }
 

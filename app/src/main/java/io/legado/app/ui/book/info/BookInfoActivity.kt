@@ -45,6 +45,7 @@ import io.legado.app.lib.theme.getPrimaryTextColor
 import io.legado.app.model.BookCover
 import io.legado.app.model.remote.RemoteBookWebDav
 import io.legado.app.ui.about.AppLogDialog
+import io.legado.app.ui.book.chat.AiChatActivity
 import io.legado.app.ui.book.audio.AudioPlayActivity
 import io.legado.app.ui.book.changecover.ChangeCoverDialog
 import io.legado.app.ui.book.changesource.ChangeBookSourceDialog
@@ -456,6 +457,13 @@ class BookInfoActivity :
                 showDialogFragment(PhotoDialog(path))
             }
             true
+        }
+        tvAiChat.setOnClickListener {
+            viewModel.getBook()?.let { book ->
+                startActivity<AiChatActivity> {
+                    putExtra(AiChatActivity.BOOK_URL, book.bookUrl)
+                }
+            }
         }
         tvRead.setOnClickListener {
             viewModel.getBook()?.let { book ->

@@ -1001,6 +1001,79 @@ object AppWebDav {
     }
 
     /**
+     * 同步AI对话记录
+     * 按 message.id 合并，上传本地新消息，下载远端新消息
+     */
+    suspend fun syncChatHistory(bookUrl: String, bookName: String) {
+        val authorization = authorization ?: return
+        if (!NetworkUtils.isAvailable()) return
+        try {
+            val chatUrl = "${syncDataUrl}chatHistory/"
+            WebDav(chatUrl, authorization).makeAsDir()
+
+            val fileName = UrlUtil.replaceReservedChar(bookName.normalizeFileName()) + "_chat.json"
+            val remoteUrl = "$chatUrl$fileName"
+
+            // 下载远端消息
+            val remoteMessages: List<io.legado.app.data.entities.ChatMessage> = try {
+                val byteArray = WebDav(remoteUrl, authorization).download()
+                val json = String(byteArray)
+                if (json.isJsonArray()) {
+                    GSON.fromJsonArray<io.legado.app.data.entities.ChatMessage>(json)
+                        .getOrNull() ?: emptyList()
+                } else {
+                    emptyList()
+                }
+            } catch (_: Exception) {
+                emptyList()
+            }
+
+            // 获取本地消息
+            val localMessages = appDb.chatMessageDao.getByBookUrl(bookUrl)
+
+            // 按 id 合并（时间戳较新的优先）
+            val localMap = localMessages.associateBy { it.id }
+            val remoteMap = remoteMessages.associateBy { it.id }
+            val allIds = (localMap.keys + remoteMap.keys).toSet()
+            val mergedList = mutableListOf<io.legado.app.data.entities.ChatMessage>()
+            val toInsertLocal = mutableListOf<io.legado.app.data.entities.ChatMessage>()
+
+            for (id in allIds) {
+                val local = localMap[id]
+                val remote = remoteMap[id]
+                when {
+                    local != null && remote == null -> mergedList.add(local)
+                    local == null && remote != null -> {
+                        mergedList.add(remote)
+                        toInsertLocal.add(remote)
+                    }
+                    local != null && remote != null -> {
+                        if (remote.timestamp > local.timestamp) {
+                            mergedList.add(remote)
+                            toInsertLocal.add(remote)
+                        } else {
+                            mergedList.add(local)
+                        }
+                    }
+                }
+            }
+
+            // 写入本地
+            if (toInsertLocal.isNotEmpty()) {
+                appDb.chatMessageDao.insert(*toInsertLocal.toTypedArray())
+            }
+
+            // 上传合并结果
+            val json = GSON.toJson(mergedList.sortedBy { it.timestamp })
+            WebDav(remoteUrl, authorization).upload(json.toByteArray(), "application/json")
+            AppLog.put("对话同步完成: ${bookName}, 共${mergedList.size}条, 新增${toInsertLocal.size}条")
+        } catch (e: Exception) {
+            currentCoroutineContext().ensureActive()
+            AppLog.put("对话同步失败: ${bookName}\n${e.localizedMessage}", e)
+        }
+    }
+
+    /**
      * 同步删除记录（在syncBookshelf/syncBookSources中调用）
      * 合并本地和远端的删除记录，返回合并后的集合
      */

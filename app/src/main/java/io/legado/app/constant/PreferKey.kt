@@ -186,4 +186,9 @@ object PreferKey {
     const val showReadTitleAddition = "showReadTitleAddition"
     const val readBarStyleFollowPage = "readBarStyleFollowPage"
     const val contentSelectSpeakMod = "contentReadAloudMod"
+
+    const val aiChatBaseUrl = "ai_chat_base_url"
+    const val aiChatApiKey = "ai_chat_api_key"
+    const val aiChatModel = "ai_chat_model"
+    const val aiChatApiFormat = "ai_chat_api_format"
 }

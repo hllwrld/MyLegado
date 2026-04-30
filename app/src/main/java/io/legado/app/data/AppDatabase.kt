@@ -15,6 +15,10 @@ import io.legado.app.data.dao.BookGroupDao
 import io.legado.app.data.dao.BookSourceDao
 import io.legado.app.data.dao.BookmarkDao
 import io.legado.app.data.dao.CacheDao
+import io.legado.app.data.dao.ChatChapterSummaryDao
+import io.legado.app.data.dao.ChatConversationDao
+import io.legado.app.data.dao.ChatMessageDao
+import io.legado.app.data.dao.ChatTemplateDao
 import io.legado.app.data.dao.CookieDao
 import io.legado.app.data.dao.DictRuleDao
 import io.legado.app.data.dao.HttpTTSDao
@@ -37,6 +41,10 @@ import io.legado.app.data.entities.BookSource
 import io.legado.app.data.entities.BookSourcePart
 import io.legado.app.data.entities.Bookmark
 import io.legado.app.data.entities.Cache
+import io.legado.app.data.entities.ChatChapterSummary
+import io.legado.app.data.entities.ChatConversation
+import io.legado.app.data.entities.ChatMessage
+import io.legado.app.data.entities.ChatTemplate
 import io.legado.app.data.entities.Cookie
 import io.legado.app.data.entities.DictRule
 import io.legado.app.data.entities.HttpTTS
@@ -67,13 +75,14 @@ val appDb by lazy {
 }
 
 @Database(
-    version = 78,
+    version = 79,
     exportSchema = true,
     entities = [Book::class, BookGroup::class, BookSource::class, BookChapter::class,
         ReplaceRule::class, SearchBook::class, SearchKeyword::class, Cookie::class,
         RssSource::class, Bookmark::class, RssArticle::class, RssReadRecord::class,
         RssStar::class, TxtTocRule::class, ReadRecord::class, HttpTTS::class, Cache::class,
-        RuleSub::class, DictRule::class, KeyboardAssist::class, Server::class],
+        RuleSub::class, DictRule::class, KeyboardAssist::class, Server::class,
+        ChatConversation::class, ChatMessage::class, ChatTemplate::class, ChatChapterSummary::class],
     views = [BookSourcePart::class],
     autoMigrations = [
         AutoMigration(from = 43, to = 44),
@@ -111,6 +120,7 @@ val appDb by lazy {
         AutoMigration(from = 75, to = 76, spec = DatabaseMigrations.Migration_75_76::class),
         AutoMigration(from = 76, to = 77),
         AutoMigration(from = 77, to = 78),
+        AutoMigration(from = 78, to = 79),
     ]
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -136,6 +146,10 @@ abstract class AppDatabase : RoomDatabase() {
     abstract val dictRuleDao: DictRuleDao
     abstract val keyboardAssistsDao: KeyboardAssistsDao
     abstract val serverDao: ServerDao
+    abstract val chatConversationDao: ChatConversationDao
+    abstract val chatMessageDao: ChatMessageDao
+    abstract val chatTemplateDao: ChatTemplateDao
+    abstract val chatChapterSummaryDao: ChatChapterSummaryDao
 
     companion object {
 
