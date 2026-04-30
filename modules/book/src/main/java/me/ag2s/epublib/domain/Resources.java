@@ -326,8 +326,12 @@ public class Resources implements Serializable {
         if (dataUriMatcher.find()) {
             String dataUriMediaTypeString = dataUriMatcher.group(1);
             MediaType dataUriMediaType = new MediaType(dataUriMediaTypeString, "." + StringUtil.substringAfterLast(dataUriMediaTypeString, '/'));
-            byte[] dataUriData = Base64.decode(dataUriMatcher.group(2), Base64.DEFAULT);
-            return new Resource(dataUriData, dataUriMediaType);
+            try {
+                byte[] dataUriData = Base64.decode(dataUriMatcher.group(2), Base64.DEFAULT);
+                return new Resource(dataUriData, dataUriMediaType);
+            } catch (IllegalArgumentException e) {
+                return null;
+            }
         } else {
             return resources.get(href);
         }

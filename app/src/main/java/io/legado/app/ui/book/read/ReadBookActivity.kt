@@ -465,9 +465,9 @@ class ReadBookActivity : BaseReadBookActivity(),
 
             R.id.menu_chapter_change_source -> lifecycleScope.launch {
                 val book = ReadBook.book ?: return@launch
-                val chapter =
+                val chapter = withContext(IO) {
                     appDb.bookChapterDao.getChapter(book.bookUrl, ReadBook.durChapterIndex)
-                        ?: return@launch
+                } ?: return@launch
                 binding.readMenu.runMenuOut()
                 showDialogFragment(
                     ChangeChapterSourceDialog(book.name, book.author, chapter.index, chapter.title)
@@ -1274,49 +1274,53 @@ class ReadBookActivity : BaseReadBookActivity(),
     override fun payAction() {
         val book = ReadBook.book ?: return
         if (book.isLocal) return
-        val chapter = appDb.bookChapterDao.getChapter(book.bookUrl, ReadBook.durChapterIndex)
-        if (chapter == null) {
-            toastOnUi("no chapter")
-            return
-        }
-        alert(R.string.chapter_pay) {
-            setMessage(chapter.title)
-            yesButton {
-                Coroutine.async(lifecycleScope) {
-                    val source =
-                        ReadBook.bookSource ?: throw NoStackTraceException("no book source")
-                    val payAction = source.getContentRule().payAction
-                    if (payAction.isNullOrBlank()) {
-                        throw NoStackTraceException("no pay action")
-                    }
-                    val analyzeRule = AnalyzeRule(book, source)
-                    analyzeRule.setCoroutineContext(coroutineContext)
-                    analyzeRule.setBaseUrl(chapter.url)
-                    analyzeRule.setChapter(chapter)
-                    analyzeRule.evalJS(payAction).toString()
-                }.onSuccess(IO) {
-                    if (it.isAbsUrl()) {
-                        startActivity<WebViewActivity> {
-                            val bookSource = ReadBook.bookSource
-                            putExtra("title", getString(R.string.chapter_pay))
-                            putExtra("url", it)
-                            putExtra("sourceOrigin", bookSource?.bookSourceUrl)
-                            putExtra("sourceName", bookSource?.bookSourceName)
-                            putExtra("sourceType", bookSource?.getSourceType())
-                        }
-                    } else if (it.isTrue()) {
-                        //购买成功后刷新目录
-                        ReadBook.book?.let {
-                            ReadBook.curTextChapter = null
-                            BookHelp.delContent(book, chapter)
-                            loadChapterList(book)
-                        }
-                    }
-                }.onError {
-                    AppLog.put("执行购买操作出错\n${it.localizedMessage}", it, true)
-                }
+        lifecycleScope.launch {
+            val chapter = withContext(IO) {
+                appDb.bookChapterDao.getChapter(book.bookUrl, ReadBook.durChapterIndex)
             }
-            noButton()
+            if (chapter == null) {
+                toastOnUi("no chapter")
+                return@launch
+            }
+            alert(R.string.chapter_pay) {
+                setMessage(chapter.title)
+                yesButton {
+                    Coroutine.async(lifecycleScope) {
+                        val source =
+                            ReadBook.bookSource
+                                ?: throw NoStackTraceException("no book source")
+                        val payAction = source.getContentRule().payAction
+                        if (payAction.isNullOrBlank()) {
+                            throw NoStackTraceException("no pay action")
+                        }
+                        val analyzeRule = AnalyzeRule(book, source)
+                        analyzeRule.setCoroutineContext(coroutineContext)
+                        analyzeRule.setBaseUrl(chapter.url)
+                        analyzeRule.setChapter(chapter)
+                        analyzeRule.evalJS(payAction).toString()
+                    }.onSuccess(IO) {
+                        if (it.isAbsUrl()) {
+                            startActivity<WebViewActivity> {
+                                val bookSource = ReadBook.bookSource
+                                putExtra("title", getString(R.string.chapter_pay))
+                                putExtra("url", it)
+                                putExtra("sourceOrigin", bookSource?.bookSourceUrl)
+                                putExtra("sourceName", bookSource?.bookSourceName)
+                                putExtra("sourceType", bookSource?.getSourceType())
+                            }
+                        } else if (it.isTrue()) {
+                            ReadBook.book?.let {
+                                ReadBook.curTextChapter = null
+                                BookHelp.delContent(book, chapter)
+                                loadChapterList(book)
+                            }
+                        }
+                    }.onError {
+                        AppLog.put("执行购买操作出错\n${it.localizedMessage}", it, true)
+                    }
+                }
+                noButton()
+            }
         }
     }
 

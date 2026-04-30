@@ -38,15 +38,16 @@ import io.legado.app.utils.isJsonArray
 import io.legado.app.utils.normalizeFileName
 import io.legado.app.utils.removePref
 import io.legado.app.utils.toastOnUi
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.MainScope
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.runBlocking
 import splitties.init.appCtx
 import java.io.File
 
@@ -80,7 +81,7 @@ object AppWebDav {
     val isJianGuoYun get() = rootWebDavUrl.startsWith(defaultWebDavUrl, true)
 
     init {
-        runBlocking {
+        CoroutineScope(Dispatchers.IO).launch {
             upConfig()
         }
     }
@@ -503,6 +504,24 @@ object AppWebDav {
             val remoteMap = remoteBooks.associateBy { it.bookUrl }
             val localMap = localBooks.associateBy { it.bookUrl }
 
+            // 本地书去重索引: 书名+作者+章节数+原始文件名 → 本地Book
+            // 用于识别不同路径但实际是同一本的本地书
+            data class LocalBookKey(
+                val name: String,
+                val author: String,
+                val totalChapterNum: Int,
+                val originName: String
+            )
+            val localBookByContent = mutableMapOf<LocalBookKey, Book>()
+            for (book in localBooks) {
+                if (book.isLocal) {
+                    val k = LocalBookKey(book.name, book.author, book.totalChapterNum, book.originName)
+                    localBookByContent[k] = book
+                }
+            }
+            // 记录已通过内容去重匹配过的本地bookUrl，避免重复加入mergedList
+            val deduplicatedLocalUrls = mutableSetOf<String>()
+
             val allKeys = (remoteMap.keys + localMap.keys).toSet()
             val mergedList = mutableListOf<Book>()
             val toInsert = mutableListOf<Book>()
@@ -528,6 +547,38 @@ object AppWebDav {
                         if (isDeleted) {
                             // 远端有但已标记删除 → 不添加到本地，也不加入合并列表
                             AppLog.put("跳过已删除的远端书籍: ${remote.name}")
+                        } else if (remote.isLocal) {
+                            // 远端是本地书且 bookUrl 不匹配，按内容特征查找本地重复
+                            val contentKey = LocalBookKey(
+                                remote.name, remote.author,
+                                remote.totalChapterNum, remote.originName
+                            )
+                            val dupLocal = localBookByContent[contentKey]
+                            if (dupLocal != null && !deduplicatedLocalUrls.contains(dupLocal.bookUrl)) {
+                                // 找到同一本书，只合并进度和分组，不覆盖本地书的其他信息
+                                deduplicatedLocalUrls.add(dupLocal.bookUrl)
+                                var dbChanged = false
+                                if (remote.durChapterTime > dupLocal.durChapterTime) {
+                                    dupLocal.durChapterIndex = remote.durChapterIndex
+                                    dupLocal.durChapterPos = remote.durChapterPos
+                                    dupLocal.durChapterTitle = remote.durChapterTitle
+                                    dupLocal.durChapterTime = remote.durChapterTime
+                                    dupLocal.syncTime = System.currentTimeMillis()
+                                    dbChanged = true
+                                }
+                                if (remote.groupTime > dupLocal.groupTime) {
+                                    dupLocal.group = remote.group
+                                    dupLocal.groupTime = remote.groupTime
+                                    dbChanged = true
+                                }
+                                if (dbChanged) {
+                                    toUpdate.add(dupLocal)
+                                }
+                                AppLog.put("本地书去重: ${remote.name}(${remote.bookUrl} → ${dupLocal.bookUrl})")
+                            } else {
+                                mergedList.add(remote)
+                                toInsert.add(remote)
+                            }
                         } else {
                             mergedList.add(remote)
                             toInsert.add(remote)
@@ -788,6 +839,7 @@ object AppWebDav {
             val mergedList = mutableListOf<BookGroup>()
             val toInsert = mutableListOf<BookGroup>()
 
+            val toUpdate = mutableListOf<BookGroup>()
             for (key in allKeys) {
                 val local = localMap[key]
                 val remote = remoteMap[key]
@@ -800,13 +852,28 @@ object AppWebDav {
                         toInsert.add(remote)
                     }
                     local != null && remote != null -> {
-                        mergedList.add(local)
+                        // 远端分组名称等信息可能更完整（如本地是自动创建的占位分组）
+                        if (local.groupName != remote.groupName
+                            || local.cover != remote.cover
+                            || local.order != remote.order
+                            || local.show != remote.show
+                            || local.bookSort != remote.bookSort
+                        ) {
+                            toUpdate.add(remote)
+                            mergedList.add(remote)
+                        } else {
+                            mergedList.add(local)
+                        }
                     }
                 }
             }
 
             if (toInsert.isNotEmpty()) {
                 appDb.bookGroupDao.insert(*toInsert.toTypedArray())
+            }
+            if (toUpdate.isNotEmpty()) {
+                appDb.bookGroupDao.update(*toUpdate.toTypedArray())
+                AppLog.put("更新分组信息: ${toUpdate.joinToString { it.groupName }}")
             }
 
             val json = GSON.toJson(mergedList)
@@ -820,7 +887,7 @@ object AppWebDav {
         }
     }
 
-    private val autoSyncScope = MainScope()
+    private val autoSyncScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private var autoSyncBookshelfJob: Job? = null
     private var autoSyncBookSourcesJob: Job? = null
     private var isSyncingBookshelf = false

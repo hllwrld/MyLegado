@@ -16,6 +16,9 @@ import io.legado.app.service.BaseReadAloudService
 import io.legado.app.ui.book.audio.AudioPlayActivity
 import io.legado.app.ui.book.read.ReadBookActivity
 import io.legado.app.utils.LogUtils
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import io.legado.app.utils.getPrefBoolean
 import io.legado.app.utils.postEvent
 
@@ -105,11 +108,16 @@ class MediaButtonReceiver : BroadcastReceiver() {
                     if (ReadBook.book != null) {
                         ReadBook.readAloud()
                     } else {
-                        appDb.bookDao.lastReadBook?.let {
-                            ReadBook.resetData(it)
-                            ReadBook.clearTextChapter()
-                            ReadBook.loadContent(false) {
-                                ReadBook.readAloud()
+                        ReadBook.launch {
+                            val book = withContext(Dispatchers.IO) {
+                                appDb.bookDao.lastReadBook
+                            }
+                            book?.let {
+                                ReadBook.resetData(it)
+                                ReadBook.clearTextChapter()
+                                ReadBook.loadContent(false) {
+                                    ReadBook.readAloud()
+                                }
                             }
                         }
                     }
